@@ -1,0 +1,541 @@
+import { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { useAppConfig } from '../hooks/useAppConfig';
+
+// ── Componenti UI riutilizzabili ──
+const Card = ({ title, desc, children }) => (
+    <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 16 }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1B3A5C' }}>{title}</div>
+            {desc && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{desc}</div>}
+        </div>
+        <div style={{ padding: 20 }}>{children}</div>
+    </div>
+);
+
+const Field = ({ label, children }) => (
+    <div style={{ marginBottom: 14 }}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</label>
+        {children}
+    </div>
+);
+
+const Input = ({ value, onChange, type = 'text', placeholder = '', style = {} }) => (
+    <input type={type} value={value ?? ''} onChange={e => onChange(type === 'number' ? Number(e.target.value) : e.target.value)} placeholder={placeholder}
+        style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, outline: 'none', boxSizing: 'border-box', ...style }} />
+);
+
+const ColorInput = ({ value, onChange }) => (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input type="color" value={value || '#000000'} onChange={e => onChange(e.target.value)} style={{ width: 36, height: 36, border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', padding: 2 }} />
+        <Input value={value} onChange={onChange} placeholder="#1B3A5C" style={{ width: 120 }} />
+    </div>
+);
+
+const Btn = ({ children, onClick, color = '#2E86AB', small = false, disabled = false }) => (
+    <button onClick={onClick} disabled={disabled} style={{ background: disabled ? '#cbd5e1' : color, color: '#fff', border: 'none', borderRadius: 6, padding: small ? '5px 12px' : '8px 16px', fontSize: small ? 11 : 12, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer' }}>{children}</button>
+);
+
+const DangerBtn = ({ children, onClick, small = true }) => (
+    <Btn onClick={onClick} color="#ef4444" small={small}>{children}</Btn>
+);
+
+const SaveIndicator = ({ saving }) => saving ? (
+    <span style={{ fontSize: 11, color: '#2E86AB', fontWeight: 600 }}>⏳ Salvataggio...</span>
+) : null;
+
+// ── Sezione: Generali ──
+function GeneralSection({ data, onSave, saving }) {
+    const [form, setForm] = useState(data || {});
+    useEffect(() => { if (data) setForm(data); }, [data]);
+    const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+    return (
+        <Card title="⚙️ Generali" desc="Nome azienda, colori, valuta">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <Field label="Nome Azienda"><Input value={form.companyName} onChange={v => set('companyName', v)} /></Field>
+                <Field label="Valuta"><Input value={form.currency} onChange={v => set('currency', v)} placeholder="EUR" /></Field>
+                <Field label="Simbolo Valuta"><Input value={form.currencySymbol} onChange={v => set('currencySymbol', v)} placeholder="€" /></Field>
+                <Field label="Lingua"><Input value={form.language} onChange={v => set('language', v)} placeholder="it" /></Field>
+                <Field label="Colore Primario"><ColorInput value={form.primaryColor} onChange={v => set('primaryColor', v)} /></Field>
+                <Field label="Colore Accento"><ColorInput value={form.accentColor} onChange={v => set('accentColor', v)} /></Field>
+            </div>
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Btn onClick={() => onSave('general', form)}>Salva Generali</Btn>
+                <SaveIndicator saving={saving} />
+            </div>
+        </Card>
+    );
+}
+
+// ── Sezione: Carburante ──
+function FuelSection({ data, onSave, saving }) {
+    const [form, setForm] = useState(data || {});
+    useEffect(() => { if (data) setForm(data); }, [data]);
+
+    return (
+        <Card title="⛽ Carburante" desc="Prezzo gasolio per calcolo trasporto">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <Field label="Prezzo Diesel (€/litro)"><Input type="number" value={form.dieselPricePerLiter} onChange={v => setForm(p => ({ ...p, dieselPricePerLiter: v }))} /></Field>
+                <Field label="Ultimo Aggiornamento"><Input type="date" value={form.lastUpdated} onChange={v => setForm(p => ({ ...p, lastUpdated: v }))} /></Field>
+            </div>
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Btn onClick={() => onSave('fuel', form)}>Salva Carburante</Btn>
+                <SaveIndicator saving={saving} />
+            </div>
+        </Card>
+    );
+}
+
+// ── Sezione: Lista editabile generica (routes, vehicles, eventTypes, statuses, staffRoles) ──
+function EditableListSection({ title, desc, icon, category, data, onSave, saving, columns, newItem }) {
+    const [items, setItems] = useState(data?.items || []);
+    useEffect(() => { if (data?.items) setItems(data.items); }, [data]);
+
+    const updateItem = (idx, field, val) => {
+        setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
+    };
+    const addItem = () => setItems(prev => [...prev, { ...newItem }]);
+    const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
+    const moveItem = (idx, dir) => {
+        const arr = [...items];
+        const target = idx + dir;
+        if (target < 0 || target >= arr.length) return;
+        [arr[idx], arr[target]] = [arr[target], arr[idx]];
+        setItems(arr);
+    };
+
+    return (
+        <Card title={`${icon} ${title}`} desc={desc}>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                        <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                            <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>#</th>
+                            {columns.map(col => (
+                                <th key={col.key} style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>{col.label}</th>
+                            ))}
+                            <th style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b', fontSize: 10 }}>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items.map((item, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '6px 8px', color: '#94a3b8', fontSize: 11 }}>{idx + 1}</td>
+                                {columns.map(col => (
+                                    <td key={col.key} style={{ padding: '4px 6px' }}>
+                                        {col.type === 'color' ? (
+                                            <ColorInput value={item[col.key]} onChange={v => updateItem(idx, col.key, v)} />
+                                        ) : (
+                                            <Input type={col.type || 'text'} value={item[col.key]} onChange={v => updateItem(idx, col.key, v)} placeholder={col.placeholder || ''} style={{ fontSize: 12, padding: '6px 8px' }} />
+                                        )}
+                                    </td>
+                                ))}
+                                <td style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                    <button onClick={() => moveItem(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, opacity: idx === 0 ? 0.3 : 1 }}>⬆️</button>
+                                    <button onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, opacity: idx === items.length - 1 ? 0.3 : 1 }}>⬇️</button>
+                                    <DangerBtn onClick={() => removeItem(idx)}>✕</DangerBtn>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Btn onClick={addItem} color="#16a34a" small>+ Aggiungi</Btn>
+                <Btn onClick={() => onSave(category, { ...data, items })}>Salva {title}</Btn>
+                <SaveIndicator saving={saving} />
+            </div>
+        </Card>
+    );
+}
+
+// ── Sezione: Overtime ──
+function OvertimeSection({ data, onSave, saving }) {
+    const [form, setForm] = useState(data || {});
+    useEffect(() => { if (data) setForm(data); }, [data]);
+    const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+    return (
+        <Card title="⏰ Moltiplicatori Ore" desc="Coefficienti per straordinario, festivo, notturno">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+                <Field label="Ordinario"><Input type="number" value={form.ordinario} onChange={v => set('ordinario', v)} /></Field>
+                <Field label="Straordinario"><Input type="number" value={form.straordinario} onChange={v => set('straordinario', v)} /></Field>
+                <Field label="Festivo"><Input type="number" value={form.festivo} onChange={v => set('festivo', v)} /></Field>
+                <Field label="Notturno"><Input type="number" value={form.notturno} onChange={v => set('notturno', v)} /></Field>
+            </div>
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Btn onClick={() => onSave('overtime', form)}>Salva Moltiplicatori</Btn>
+                <SaveIndicator saving={saving} />
+            </div>
+        </Card>
+    );
+}
+
+// ── Sezione: Defaults ──
+function DefaultsSection({ data, onSave, saving }) {
+    const [form, setForm] = useState(data || {});
+    useEffect(() => { if (data) setForm(data); }, [data]);
+    const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+    const fields = [
+        { key: 'whCount', label: 'Magazzinieri (n°)' },
+        { key: 'whRate', label: 'Costo/ora Magazzino (€)' },
+        { key: 'whHLoad', label: 'Ore Carico' },
+        { key: 'whHUnload', label: 'Ore Scarico' },
+        { key: 'planHours', label: 'Ore Pianificazione' },
+        { key: 'planRate', label: 'Costo/ora Pianificazione (€)' },
+        { key: 'mealCost', label: 'Costo Pasto (€)' },
+        { key: 'mealsDay', label: 'Pasti/Giorno' },
+        { key: 'workDays', label: 'Giorni Lavoro Default' },
+        { key: 'hotelNights', label: 'Notti Hotel Default' },
+        { key: 'hotelCost', label: 'Costo Hotel/Notte (€)' },
+        { key: 'contingencyPct', label: 'Contingency (%)' },
+        { key: 'paymentDays', label: 'Giorni Pagamento' },
+        { key: 'interestRate', label: 'Tasso Interesse (%)' },
+        { key: 'totalWorkDays', label: 'Giorni Lavoro Totali' },
+    ];
+
+    return (
+        <Card title="📋 Valori Predefiniti" desc="Valori di default per nuovi progetti">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                {fields.map(f => (
+                    <Field key={f.key} label={f.label}>
+                        <Input type="number" value={form[f.key]} onChange={v => set(f.key, v)} />
+                    </Field>
+                ))}
+            </div>
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Btn onClick={() => onSave('defaults', form)}>Salva Valori Predefiniti</Btn>
+                <SaveIndicator saving={saving} />
+            </div>
+        </Card>
+    );
+}
+
+// ── Sezione: Ruoli Staff ──
+function StaffRolesSection({ data, onSave, saving }) {
+    const [form, setForm] = useState(data || { internal: [], external: [] });
+    useEffect(() => { if (data) setForm(data); }, [data]);
+
+    const updateRole = (type, idx, field, val) => {
+        setForm(prev => ({
+            ...prev,
+            [type]: prev[type].map((r, i) => i === idx ? { ...r, [field]: field === 'defaultRate' ? Number(val) : val } : r)
+        }));
+    };
+    const addRole = (type) => setForm(prev => ({ ...prev, [type]: [...prev[type], { role: '', defaultRate: 15 }] }));
+    const removeRole = (type, idx) => setForm(prev => ({ ...prev, [type]: prev[type].filter((_, i) => i !== idx) }));
+
+    const RoleTable = ({ type, label }) => (
+        <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>{label}</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                    <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Ruolo</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Tariffa Default (€/h)</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b', fontSize: 10 }}>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {(form[type] || []).map((r, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '4px 6px' }}><Input value={r.role} onChange={v => updateRole(type, idx, 'role', v)} placeholder="Nome ruolo" style={{ fontSize: 12, padding: '6px 8px' }} /></td>
+                            <td style={{ padding: '4px 6px' }}><Input type="number" value={r.defaultRate} onChange={v => updateRole(type, idx, 'defaultRate', v)} style={{ fontSize: 12, padding: '6px 8px', width: 100 }} /></td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center' }}><DangerBtn onClick={() => removeRole(type, idx)}>✕</DangerBtn></td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            <Btn onClick={() => addRole(type)} color="#16a34a" small>+ Aggiungi {label}</Btn>
+        </div>
+    );
+
+    return (
+        <Card title="👔 Ruoli Personale" desc="Ruoli predefiniti e tariffe per staff interno ed esterno">
+            <RoleTable type="internal" label="Staff Interno" />
+            <RoleTable type="external" label="Staff Esterno" />
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Btn onClick={() => onSave('staffRoles', form)}>Salva Ruoli</Btn>
+                <SaveIndicator saving={saving} />
+            </div>
+        </Card>
+    );
+}
+
+// ── Sezione: Gestione Utenti ──
+function UsersSection() {
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showAdd, setShowAdd] = useState(false);
+    const [newEmail, setNewEmail] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [newName, setNewName] = useState('');
+    const [newRole, setNewRole] = useState('editor');
+    const [creating, setCreating] = useState(false);
+    const [error, setError] = useState('');
+
+    const loadUsers = async () => {
+        setLoading(true);
+        const { supabase } = await import('../lib/supabaseClient');
+        const { data } = await supabase.from('profiles').select('*').order('created_at');
+        if (data) setUsers(data);
+        setLoading(false);
+    };
+
+    useEffect(() => { loadUsers(); }, []);
+
+    const updateRole = async (userId, newRole) => {
+        const { supabase } = await import('../lib/supabaseClient');
+        await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
+        loadUsers();
+    };
+
+    const updateName = async (userId, newName) => {
+        const { supabase } = await import('../lib/supabaseClient');
+        await supabase.from('profiles').update({ full_name: newName }).eq('id', userId);
+        loadUsers();
+    };
+
+    const createUser = async () => {
+        if (!newEmail || !newPassword || newPassword.length < 6) {
+            setError('Email e password (min 6 caratteri) obbligatori');
+            return;
+        }
+        setCreating(true);
+        setError('');
+        try {
+            const response = await fetch('https://vzuxutnrslptszqsxtbv.supabase.co/auth/v1/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': 'sb_publishable_beKrbbyyrkb_9T3I5Ghgyw_F7S9qYFs', 'Authorization': 'Bearer sb_publishable_beKrbbyyrkb_9T3I5Ghgyw_F7S9qYFs' },
+                body: JSON.stringify({ email: newEmail, password: newPassword, email_confirm: true, user_metadata: { full_name: newName || newEmail } })
+            });
+            if (!response.ok) {
+                const { supabase } = await import('../lib/supabaseClient');
+                const { data, error: signUpError } = await supabase.auth.signUp({ email: newEmail, password: newPassword, options: { data: { full_name: newName || newEmail } } });
+                if (signUpError) throw signUpError;
+                if (data?.user) {
+                    await supabase.from('profiles').upsert({ id: data.user.id, full_name: newName || newEmail, role: newRole });
+                }
+            } else {
+                const userData = await response.json();
+                if (userData?.id) {
+                    const { supabase } = await import('../lib/supabaseClient');
+                    await supabase.from('profiles').upsert({ id: userData.id, full_name: newName || newEmail, role: newRole });
+                }
+            }
+            setNewEmail(''); setNewPassword(''); setNewName(''); setNewRole('editor'); setShowAdd(false);
+            setTimeout(loadUsers, 1000);
+        } catch (err) {
+            setError(err.message || 'Errore nella creazione utente');
+        }
+        setCreating(false);
+    };
+
+    const ROLE_COLORS = { admin: '#dc2626', editor: '#2E86AB', viewer: '#64748b' };
+
+    return (
+        <Card title="👥 Gestione Utenti" desc="Aggiungi, modifica ruoli e gestisci il team">
+            {!showAdd ? (
+                <div style={{ marginBottom: 16 }}>
+                    <Btn onClick={() => setShowAdd(true)} color="#16a34a">+ Aggiungi Utente</Btn>
+                </div>
+            ) : (
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 12 }}>Nuovo Utente</div>
+                    {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#dc2626', marginBottom: 12 }}>{error}</div>}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <Field label="Nome"><Input value={newName} onChange={v => setNewName(v)} placeholder="Mario Rossi" /></Field>
+                        <Field label="Email *"><Input type="email" value={newEmail} onChange={v => setNewEmail(v)} placeholder="mario@itinerapro.com" /></Field>
+                        <Field label="Password *"><Input type="password" value={newPassword} onChange={v => setNewPassword(v)} placeholder="Minimo 6 caratteri" /></Field>
+                        <Field label="Ruolo">
+                            <select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}>
+                                <option value="editor">Editor</option>
+                                <option value="viewer">Viewer</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </Field>
+                    </div>
+                    <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                        <Btn onClick={createUser} disabled={creating}>{creating ? '⏳ Creazione...' : '✓ Crea Utente'}</Btn>
+                        <Btn onClick={() => { setShowAdd(false); setError(''); }} color="#64748b">Annulla</Btn>
+                    </div>
+                </div>
+            )}
+            {loading ? <div style={{ color: '#94a3b8', fontSize: 13 }}>Caricamento...</div> : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                        <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                            <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Nome</th>
+                            <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Ruolo</th>
+                            <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Registrato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {users.map(u => (
+                            <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '8px' }}>
+                                    <input value={u.full_name} onChange={e => { const val = e.target.value; setUsers(prev => prev.map(x => x.id === u.id ? { ...x, full_name: val } : x)); }} onBlur={() => updateName(u.id, u.full_name)} style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '4px 8px', fontSize: 12, fontWeight: 600, width: '100%', boxSizing: 'border-box' }} />
+                                </td>
+                                <td style={{ padding: '8px' }}>
+                                    <select value={u.role} onChange={e => updateRole(u.id, e.target.value)} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600, color: ROLE_COLORS[u.role] || '#333', cursor: 'pointer' }}>
+                                        <option value="admin">Admin</option>
+                                        <option value="editor">Editor</option>
+                                        <option value="viewer">Viewer</option>
+                                    </select>
+                                </td>
+                                <td style={{ padding: '8px', color: '#94a3b8' }}>{new Date(u.created_at).toLocaleDateString('it-IT')}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </Card>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGINA IMPOSTAZIONI PRINCIPALE
+// ═══════════════════════════════════════════════════════════
+const SECTIONS = [
+    { id: 'general', label: '⚙️ Generali', icon: '⚙️' },
+    { id: 'fuel', label: '⛽ Carburante', icon: '⛽' },
+    { id: 'routes', label: '🗺️ Percorsi', icon: '🗺️' },
+    { id: 'vehicles', label: '🚛 Veicoli', icon: '🚛' },
+    { id: 'overtime', label: '⏰ Ore/Turni', icon: '⏰' },
+    { id: 'eventTypes', label: '📅 Tipi Evento', icon: '📅' },
+    { id: 'statuses', label: '🏷️ Stati Progetto', icon: '🏷️' },
+    { id: 'defaults', label: '📋 Valori Default', icon: '📋' },
+    { id: 'staffRoles', label: '👔 Ruoli Staff', icon: '👔' },
+    { id: 'users', label: '👥 Utenti', icon: '👥' },
+];
+
+export default function SettingsPage({ onBack }) {
+    const { profile } = useAuth();
+    const { config, loading, saving, saveCategory } = useAppConfig();
+    const [activeSection, setActiveSection] = useState('general');
+    const [saveMsg, setSaveMsg] = useState('');
+
+    const handleSave = async (category, data) => {
+        const ok = await saveCategory(category, data);
+        setSaveMsg(ok ? '✅ Salvato!' : '❌ Errore');
+        setTimeout(() => setSaveMsg(''), 2000);
+    };
+
+    if (profile?.role !== 'admin') {
+        return (
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4f8' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: '#1B3A5C' }}>Accesso Negato</div>
+                    <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Solo gli admin possono accedere alle impostazioni.</div>
+                    <button onClick={onBack} style={{ marginTop: 16, padding: '8px 20px', background: '#2E86AB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>← Torna ai progetti</button>
+                </div>
+            </div>
+        );
+    }
+
+    if (loading) {
+        return (
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4f8' }}>
+                <div style={{ fontSize: 13, color: '#94a3b8' }}>⏳ Caricamento impostazioni...</div>
+            </div>
+        );
+    }
+
+    const renderSection = () => {
+        switch (activeSection) {
+            case 'general': return <GeneralSection data={config.general} onSave={handleSave} saving={saving} />;
+            case 'fuel': return <FuelSection data={config.fuel} onSave={handleSave} saving={saving} />;
+            case 'routes': return (
+                <EditableListSection title="Percorsi" desc="Rotte predefinite per il trasporto" icon="🗺️" category="routes" data={config.routes} onSave={handleSave} saving={saving}
+                    columns={[
+                        { key: 'name', label: 'Nome Percorso', placeholder: 'Magazzino → Destinazione' },
+                        { key: 'km', label: 'Km', type: 'number', placeholder: '0' },
+                        { key: 'tolls', label: 'Pedaggi (€)', type: 'number', placeholder: '0' },
+                    ]}
+                    newItem={{ name: 'Nuovo Percorso', km: 0, tolls: 0 }}
+                />
+            );
+            case 'vehicles': return (
+                <EditableListSection title="Veicoli" desc="Tipi di veicolo con consumo e capacità" icon="🚛" category="vehicles" data={config.vehicles} onSave={handleSave} saving={saving}
+                    columns={[
+                        { key: 'name', label: 'Nome', placeholder: 'Tipo veicolo' },
+                        { key: 'cons', label: 'Consumo (L/100km)', type: 'number' },
+                        { key: 'vol', label: 'Volume (m³)', type: 'number' },
+                        { key: 'payload', label: 'Portata (kg)', type: 'number' },
+                    ]}
+                    newItem={{ name: 'Nuovo Veicolo', cons: 10, vol: 10, payload: 1000 }}
+                />
+            );
+            case 'overtime': return <OvertimeSection data={config.overtime} onSave={handleSave} saving={saving} />;
+            case 'eventTypes': return (
+                <EditableListSection title="Tipi Evento" desc="Categorie per i progetti" icon="📅" category="eventTypes" data={config.eventTypes} onSave={handleSave} saving={saving}
+                    columns={[
+                        { key: 'icon', label: 'Icona', placeholder: '🎉' },
+                        { key: 'value', label: 'Valore (codice)', placeholder: 'Wedding' },
+                        { key: 'label', label: 'Etichetta', placeholder: 'Matrimonio' },
+                    ]}
+                    newItem={{ icon: '🎉', value: 'NewType', label: 'Nuovo Tipo' }}
+                />
+            );
+            case 'statuses': return (
+                <EditableListSection title="Stati Progetto" desc="Stati e colori dei progetti" icon="🏷️" category="projectStatuses" data={config.projectStatuses} onSave={handleSave} saving={saving}
+                    columns={[
+                        { key: 'value', label: 'Codice', placeholder: 'draft' },
+                        { key: 'label', label: 'Etichetta', placeholder: 'Bozza' },
+                        { key: 'bgColor', label: 'Sfondo', type: 'color' },
+                        { key: 'textColor', label: 'Testo', type: 'color' },
+                    ]}
+                    newItem={{ value: 'new_status', label: 'Nuovo Stato', bgColor: '#f1f5f9', textColor: '#475569' }}
+                />
+            );
+            case 'defaults': return <DefaultsSection data={config.defaults} onSave={handleSave} saving={saving} />;
+            case 'staffRoles': return <StaffRolesSection data={config.staffRoles} onSave={handleSave} saving={saving} />;
+            case 'users': return <UsersSection />;
+            default: return null;
+        }
+    };
+
+    return (
+        <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: '#f0f4f8', minHeight: '100vh' }}>
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg, #1B3A5C 0%, #2E86AB 100%)', padding: '12px 24px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>← Progetti</button>
+                    <div>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>IMPOSTAZIONI</div>
+                        <div style={{ fontSize: 10, opacity: 0.8 }}>Configurazione Itinera Calculator</div>
+                    </div>
+                </div>
+                {saveMsg && <div style={{ fontSize: 13, fontWeight: 600 }}>{saveMsg}</div>}
+            </div>
+
+            {/* Layout: Sidebar + Content */}
+            <div style={{ display: 'flex', maxWidth: 1200, margin: '0 auto' }}>
+                {/* Sidebar */}
+                <div style={{ width: 220, padding: '16px 12px', borderRight: '1px solid #e2e8f0', background: '#fff', minHeight: 'calc(100vh - 52px)' }}>
+                    {SECTIONS.map(s => (
+                        <button key={s.id} onClick={() => setActiveSection(s.id)}
+                            style={{
+                                display: 'block', width: '100%', textAlign: 'left',
+                                padding: '10px 12px', marginBottom: 2, borderRadius: 6,
+                                border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                                background: activeSection === s.id ? '#eef6fb' : 'transparent',
+                                color: activeSection === s.id ? '#1B3A5C' : '#64748b',
+                                transition: 'all 0.15s',
+                            }}>
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, padding: 20 }}>
+                    {renderSection()}
+                </div>
+            </div>
+        </div>
+    );
+}
