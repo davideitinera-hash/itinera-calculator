@@ -6,6 +6,7 @@ import { useResponsive } from './hooks/useResponsive';
 import { useDragDrop } from './hooks/useDragDrop';
 import Breadcrumb from './components/Breadcrumb';
 import ExportPDFButton from './components/ExportPDF';
+import RentmanImportModal from './components/RentmanImportModal';
 
 // ═══ CONFIG ═══
 const DIESEL = 1.666;
@@ -67,7 +68,7 @@ const Card = ({ title, icon, children, accent, open, onToggle, right }) => (
   </div>
 );
 const R = ({ children, gap }) => <div className="no-print" style={{ display: "flex", gap: gap || 6, marginBottom: 5, flexWrap: "wrap", alignItems: "end" }}>{children}</div>;
-const F = ({ label, value, onChange, type = "number", suffix, min, step = 1, w, ph, disabled }) => (
+const F = ({ label, value, onChange, type = "number", min, step = 1, w, ph, disabled }) => (
   <div style={{ flex: w || 1, minWidth: 60 }}>
     {label && <label style={{ fontSize: 9, color: "#888", display: "block", marginBottom: 1 }}>{label}</label>}
     <input type={type} value={value} onChange={e => onChange(type === "number" ? parseFloat(e.target.value) || 0 : e.target.value)} min={min} step={step} placeholder={ph} disabled={disabled}
@@ -131,11 +132,13 @@ function SupplierInput({ value, onChange, placeholder, suppliersList, onAutoSave
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(value || '');
   const [focused, setFocused] = useState(false);
-  useEffect(() => { if (!focused) setSearch(value || ''); }, [value, focused]);
-  const filtered = search.length >= 1 ? suppliersList.filter(s => s.name.toLowerCase().includes(search.toLowerCase())).slice(0, 10) : [];
+  // Derive displayed value: when focused use local search state, otherwise use prop value
+  const displayValue = focused ? search : (value || '');
+  const filterText = focused ? search : (value || '');
+  const filtered = filterText.length >= 1 ? suppliersList.filter(s => s.name.toLowerCase().includes(filterText.toLowerCase())).slice(0, 10) : [];
   return (
     <div style={{ position: 'relative' }}>
-      <input value={search} onChange={e => { setSearch(e.target.value); setOpen(true); }} onFocus={() => { setFocused(true); setOpen(true); }} onBlur={() => { setFocused(false); setTimeout(() => setOpen(false), 200); if (search !== value) onChange(search); }} placeholder={placeholder || 'Fornitore'} style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, boxSizing: 'border-box' }} />
+      <input value={displayValue} onChange={e => { setSearch(e.target.value); setOpen(true); }} onFocus={() => { setFocused(true); setSearch(value || ''); setOpen(true); }} onBlur={() => { setFocused(false); setTimeout(() => setOpen(false), 200); if (search !== value) onChange(search); }} placeholder={placeholder || 'Fornitore'} style={{ width: '100%', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, boxSizing: 'border-box' }} />
       {open && filtered.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: 200, overflowY: 'auto' }}>
           {filtered.map(s => (
@@ -150,6 +153,35 @@ function SupplierInput({ value, onChange, placeholder, suppliersList, onAutoSave
   );
 }
 
+// Staff Sub-component mapping (moved outside of main component)
+const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delObj, addObj }) => {
+  const cols = isMobile ? "1.8fr 0.4fr 0.6fr 0.4fr 0.4fr 0.4fr 0.4fr 0.7fr auto" : "2fr 0.5fr 0.7fr 0.5fr 0.5fr 0.5fr 0.5fr 0.8fr auto";
+  const mw = isMobile ? 550 : 650;
+  return (
+    <>
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 3 }}>
+          {["Ruolo", "N°", "€/h", "Ord", "Str ×1.25", "Fest ×1.5", "Nott ×1.15", "Costo", ""].map(h => <span key={h} style={{ fontSize: 8, color: "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
+        </div>
+        {calcList.map(s => (
+          <div key={s.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 2, alignItems: "center" }}>
+            <Inp value={s.role} onChange={v => updateObjList(listField, s.id, "role", v)} ph="Ruolo" />
+            <Inp type="number" value={s.count} onChange={v => updateObjList(listField, s.id, "count", v)} align="center" />
+            <Inp type="number" value={s.costHour} onChange={v => updateObjList(listField, s.id, "costHour", v)} align="center" />
+            <Inp type="number" value={s.hOrd} onChange={v => updateObjList(listField, s.id, "hOrd", v)} align="center" />
+            <Inp type="number" value={s.hStr} onChange={v => updateObjList(listField, s.id, "hStr", v)} align="center" />
+            <Inp type="number" value={s.hFest} onChange={v => updateObjList(listField, s.id, "hFest", v)} align="center" />
+            <Inp type="number" value={s.hNott} onChange={v => updateObjList(listField, s.id, "hNott", v)} align="center" />
+            <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", transition: 'color 0.3s ease' }}>€{fmt(s.total)}</div>
+            <X onClick={() => delObj(listField, s.id)} />
+          </div>
+        ))}
+      </div>
+      <Btn onClick={() => addObj(listField, { role: "", count: 1, costHour: 20, hOrd: 8, hStr: 0, hFest: 0, hNott: 0 })} s>+ {label}</Btn>
+    </>
+  );
+};
+
 // ═══ MAIN COMPONENT ═══
 export default function ItineraV4({ projectId, onBack }) {
   const [sec, setSec] = useState({});
@@ -159,10 +191,11 @@ export default function ItineraV4({ projectId, onBack }) {
   // Global consolidated state (Supabase)
   const { data: d, loading, updateField, addItem, updateItem, deleteItem, reorderItems } = useSupabaseProject(projectId);
   const { config: appConfig } = useAppConfig();
-  const { isMobile, isTablet, isTouch } = useResponsive();
+  const { isMobile } = useResponsive();
 
   const [suppliersList, setSuppliersList] = useState([]);
   const [activeNav, setActiveNav] = useState('progetto');
+  const [showRentmanModal, setShowRentmanModal] = useState(false);
   const scrollToSection = (id) => {
     const el = document.getElementById('section-' + id);
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActiveNav(id); }
@@ -179,12 +212,12 @@ export default function ItineraV4({ projectId, onBack }) {
     return () => observer.disconnect();
   }, [d]);
 
-  // Dynamic config from Supabase (with hardcoded fallback)
-  const ROUTES_DYN = appConfig?.routes?.items ? Object.fromEntries(appConfig.routes.items.map(r => [r.name, { km: r.km, tolls: r.tolls }])) : ROUTES;
-  const RK_DYN = Object.keys(ROUTES_DYN);
-  const VEH_DYN = appConfig?.vehicles?.items || VEH;
-  const OT_MULT_DYN = appConfig?.overtime || OT_MULT;
-  const DIESEL_DYN = appConfig?.fuel?.dieselPricePerLiter || DIESEL;
+  // Dynamic config from Supabase (with hardcoded fallback) — memoized to avoid useMemo deps issues
+  const ROUTES_DYN = useMemo(() => appConfig?.routes?.items ? Object.fromEntries(appConfig.routes.items.map(r => [r.name, { km: r.km, tolls: r.tolls }])) : ROUTES, [appConfig]);
+  const RK_DYN = useMemo(() => Object.keys(ROUTES_DYN), [ROUTES_DYN]);
+  const VEH_DYN = useMemo(() => appConfig?.vehicles?.items || VEH, [appConfig]);
+  const OT_MULT_DYN = useMemo(() => appConfig?.overtime || OT_MULT, [appConfig]);
+  const DIESEL_DYN = useMemo(() => appConfig?.fuel?.dieselPricePerLiter || DIESEL, [appConfig]);
 
   // Helpers to update global state easily
   const updateF = (field, val) => updateField(field, val);
@@ -253,7 +286,7 @@ export default function ItineraV4({ projectId, onBack }) {
     const crewMeals = totalIntP + totalExtP;
     const totalAccom = (crewMeals * d.mealCost * d.mealsDay * d.workDays) + (crewMeals * d.hotelNights * d.hotelCost);
     const totalAn = d.analytics.reduce((s, a) => s + a.cost, 0);
-    const totalDmg = d.damages.reduce((s, d) => s + d.cost, 0);
+    const totalDmg = d.damages.reduce((s, item) => s + item.cost, 0);
     const totalMisc = d.misc.reduce((s, m) => s + m.cost, 0);
     const totalPhHours = d.phases.reduce((s, p) => s + p.crew * p.hours, 0);
 
@@ -287,7 +320,7 @@ export default function ItineraV4({ projectId, onBack }) {
       marginPct: calc.marginPct || 0,
       contingencyPct: d.contingencyPct || 0,
       transportPctOfRevenue: calc.revenueNet > 0 ? (calc.totalTransport / calc.revenueNet) * 100 : 0,
-      staffPctOfRevenue: calc.revenueNet > 0 ? ((calc.totalIntStaff + calc.totalExtStaff) / calc.revenueNet) * 100 : 0,
+      staffPctOfRevenue: calc.revenueNet > 0 ? ((calc.totalInt + calc.totalExt) / calc.revenueNet) * 100 : 0,
     };
     return rules.filter(rule => {
       const val = values[rule.condition];
@@ -351,37 +384,47 @@ export default function ItineraV4({ projectId, onBack }) {
     }
   };
 
+  const handleRentmanImport = async (mapped, options) => {
+    if (!mapped) return;
+    try {
+      if (options.clearExisting) {
+        for (const field of ['eqItems', 'subRentals', 'purchases', 'misc']) {
+          const items = d[field] || [];
+          for (const item of items) { await deleteItem(field, item.id); }
+        }
+      }
+      if (options.projectInfo && mapped.projectFields) {
+        for (const [field, value] of Object.entries(mapped.projectFields)) {
+          if (value != null && value !== '') await updateField(field, value);
+        }
+      }
+      if (options.equipment && mapped.equipmentItems.length > 0) {
+        for (const eq of mapped.equipmentItems) {
+          await addItem('eqItems', {
+            desc: eq.desc, qty: eq.qty, l: eq.l, w: eq.w, h: eq.h,
+            weightKg: eq.weightKg, costUnit: eq.costUnit,
+            owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0,
+          });
+        }
+      }
+      if (options.costs) {
+        for (const sr of mapped.subRentals) {
+          await addItem('subRentals', { supplier: sr.supplier || '', desc: sr.desc, cost: sr.cost, vatIncl: false });
+        }
+        for (const p of mapped.purchases) {
+          await addItem('purchases', { supplier: p.supplier || '', desc: p.desc, cost: p.cost, vatIncl: false });
+        }
+        for (const m of mapped.miscCosts) {
+          await addItem('misc', { desc: m.desc, cost: m.cost });
+        }
+      }
+    } catch (err) {
+      console.error('Rentman import error:', err);
+    }
+  };
+
   if (loading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4f8' }}><div style={{ textAlign: 'center' }}><div style={{ fontSize: 24, fontWeight: 800, color: '#1B3A5C' }}>ITINERA</div><div style={{ fontSize: 13, color: '#94a3b8' }}>Caricamento progetto...</div></div></div>;
   if (!d) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4f8' }}><div style={{ textAlign: 'center' }}><div style={{ fontSize: 24, fontWeight: 800, color: '#1B3A5C' }}>Progetto non trovato</div><button onClick={onBack} style={{ marginTop: 12, padding: '8px 20px', background: '#2E86AB', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Torna ai progetti</button></div></div>;
-
-  // Staff Sub-component mapping
-  const StaffTable = ({ listField, calcList, label }) => {
-    const cols = isMobile ? "1.8fr 0.4fr 0.6fr 0.4fr 0.4fr 0.4fr 0.4fr 0.7fr auto" : "2fr 0.5fr 0.7fr 0.5fr 0.5fr 0.5fr 0.5fr 0.8fr auto";
-    const mw = isMobile ? 550 : 650;
-    return (
-      <>
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 3 }}>
-            {["Ruolo", "N°", "€/h", "Ord", "Str ×1.25", "Fest ×1.5", "Nott ×1.15", "Costo", ""].map(h => <span key={h} style={{ fontSize: 8, color: "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
-          </div>
-          {calcList.map(s => (
-            <div key={s.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 2, alignItems: "center" }}>
-              <Inp value={s.role} onChange={v => updateObjList(listField, s.id, "role", v)} ph="Ruolo" />
-              <Inp type="number" value={s.count} onChange={v => updateObjList(listField, s.id, "count", v)} align="center" />
-              <Inp type="number" value={s.costHour} onChange={v => updateObjList(listField, s.id, "costHour", v)} align="center" />
-              <Inp type="number" value={s.hOrd} onChange={v => updateObjList(listField, s.id, "hOrd", v)} align="center" />
-              <Inp type="number" value={s.hStr} onChange={v => updateObjList(listField, s.id, "hStr", v)} align="center" />
-              <Inp type="number" value={s.hFest} onChange={v => updateObjList(listField, s.id, "hFest", v)} align="center" />
-              <Inp type="number" value={s.hNott} onChange={v => updateObjList(listField, s.id, "hNott", v)} align="center" />
-              <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", transition: 'color 0.3s ease' }}>€{fmt(s.total)}</div>
-              <X onClick={() => delObj(listField, s.id)} />
-            </div>
-          ))}
-        </div>
-        <Btn onClick={() => addObj(listField, { role: "", count: 1, costHour: 20, hOrd: 8, hStr: 0, hFest: 0, hNott: 0 })} s>+ {label}</Btn>
-      </>
-    );
-  };
 
   return (
     <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", background: "#f0f4f8", minHeight: "100vh" }}>
@@ -389,7 +432,10 @@ export default function ItineraV4({ projectId, onBack }) {
       <div style={{ background: '#1B3A5C', padding: isMobile ? '10px 12px' : '8px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 100 }}>
         <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>← Progetti</button>
         <span style={{ color: '#fff', fontSize: isMobile ? 12 : 14, fontWeight: 700 }}>ITINERA — {d.projectName}</span>
-        <ExportPDFButton projectData={d} calc={calc} appConfig={appConfig} style={{ marginLeft: 'auto', padding: '6px 14px', fontSize: 11, borderRadius: 6 }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button onClick={() => setShowRentmanModal(true)} style={{ background: 'rgba(46,134,171,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>📡 Rentman</button>
+          <ExportPDFButton projectData={d} calc={calc} appConfig={appConfig} style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6 }} />
+        </div>
       </div>
       <div style={{ padding: isMobile ? '4px 12px' : '4px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0' }}>
         <Breadcrumb items={[
@@ -646,9 +692,9 @@ export default function ItineraV4({ projectId, onBack }) {
                   <F label="Ore scarico" value={d.whHUnload} onChange={v => updateF("whHUnload", v)} />
                 </R>
               </div>
-              <StaffTable listField="intStaff" calcList={calc.intCalcs} label="Interno" />
+              <StaffTable listField="intStaff" calcList={calc.intCalcs} label="Interno" isMobile={isMobile} updateObjList={updateObjList} delObj={delObj} addObj={addObj} />
               <div style={{ margin: "16px 0", borderTop: "1px solid #eaecf0" }} />
-              <StaffTable listField="extStaff" calcList={calc.extCalcs} label="Esterno / Facchini" />
+              <StaffTable listField="extStaff" calcList={calc.extCalcs} label="Esterno / Facchini" isMobile={isMobile} updateObjList={updateObjList} delObj={delObj} addObj={addObj} />
             </Card>
 
           </div>
@@ -786,6 +832,15 @@ export default function ItineraV4({ projectId, onBack }) {
           </div>
         </div>
       </div>
+      {showRentmanModal && (
+        <RentmanImportModal
+          onClose={() => setShowRentmanModal(false)}
+          onImport={(mapped, options) => {
+            handleRentmanImport(mapped, options);
+            setTimeout(() => setShowRentmanModal(false), 1500);
+          }}
+        />
+      )}
     </div>
   );
 }
