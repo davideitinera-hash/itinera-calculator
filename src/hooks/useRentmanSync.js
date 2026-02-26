@@ -67,7 +67,9 @@ export function useRentmanSync() {
 
         const equipmentItems = (equipment || []).map(e => ({
             desc: e.desc || '',
+            supplier: e.supplier || e.contactName || e.contact?.displayname || '',
             qty: e.qty || 1,
+            coefficient: 1,
             l: Math.round(((e.l || 0) / 100) * 100) / 100,
             w: Math.round(((e.w || 0) / 100) * 100) / 100,
             h: Math.round(((e.h || 0) / 100) * 100) / 100,

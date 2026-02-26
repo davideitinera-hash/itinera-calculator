@@ -10,7 +10,7 @@ function dbToState(project, equipment, transport, intStaff, extStaff, costs, pha
         planHours: Number(project.plan_hours), planRate: Number(project.plan_rate),
         mealCost: Number(project.meal_cost), mealsDay: project.meals_day, workDays: project.work_days, hotelNights: project.hotel_nights, hotelCost: Number(project.hotel_cost),
         contingencyPct: Number(project.contingency_pct), paymentDays: project.payment_days, interestRate: Number(project.interest_rate),
-        eqItems: equipment.map(e => ({ id: e.id, desc: e.description, qty: e.qty, l: Number(e.l), w: Number(e.w), h: Number(e.h), weightKg: Number(e.weight_kg), costUnit: Number(e.cost_unit), owned: e.owned, purchasePrice: Number(e.purchase_price), totalUses: e.total_uses, usesUsed: e.uses_used })),
+        eqItems: equipment.map(e => ({ id: e.id, desc: e.description, supplier: e.supplier || '', qty: e.qty, coefficient: Number(e.coefficient ?? 1), l: Number(e.l), w: Number(e.w), h: Number(e.h), weightKg: Number(e.weight_kg), costUnit: Number(e.cost_unit), owned: e.owned, purchasePrice: Number(e.purchase_price), totalUses: e.total_uses, usesUsed: e.uses_used })),
         legs: transport.map(t => ({ id: t.id, desc: t.description, route: t.route, cKm: Number(t.custom_km), cTolls: Number(t.custom_tolls), vType: t.vehicle_type, nVeh: t.n_vehicles, rentalDay: Number(t.rental_day), rentalDays: t.rental_days, shared: t.shared })),
         intStaff: intStaff.map(s => ({ id: s.id, role: s.role, count: s.count, costHour: Number(s.cost_hour), hOrd: Number(s.h_ord), hStr: Number(s.h_str), hFest: Number(s.h_fest), hNott: Number(s.h_nott) })),
         extStaff: extStaff.map(s => ({ id: s.id, role: s.role, count: s.count, costHour: Number(s.cost_hour), hOrd: Number(s.h_ord), hStr: Number(s.h_str), hFest: Number(s.h_fest), hNott: Number(s.h_nott) })),
@@ -65,7 +65,7 @@ export function useSupabaseProject(projectId) {
 
     const addItem = useCallback(async (listField, newItem) => {
         const tableMap = {
-            eqItems: { table: 'equipment_items', transform: (item) => ({ project_id: projectId, description: item.desc || '', qty: item.qty || 1, l: item.l || 0, w: item.w || 0, h: item.h || 0, weight_kg: item.weightKg || 0, cost_unit: item.costUnit || 0, owned: item.owned || false, purchase_price: item.purchasePrice || 0, total_uses: item.totalUses || 1, uses_used: item.usesUsed || 0 }) },
+            eqItems: { table: 'equipment_items', transform: (item) => ({ project_id: projectId, description: item.desc || '', supplier: item.supplier || '', qty: item.qty || 1, coefficient: item.coefficient ?? 1, l: item.l || 0, w: item.w || 0, h: item.h || 0, weight_kg: item.weightKg || 0, cost_unit: item.costUnit || 0, owned: item.owned || false, purchase_price: item.purchasePrice || 0, total_uses: item.totalUses || 1, uses_used: item.usesUsed || 0 }) },
             legs: { table: 'transport_legs', transform: (item) => ({ project_id: projectId, description: item.desc || '', route: item.route || '', custom_km: item.cKm || 0, custom_tolls: item.cTolls || 0, vehicle_type: item.vType || 0, n_vehicles: item.nVeh || 1, rental_day: item.rentalDay || 150, rental_days: item.rentalDays || 1, shared: item.shared || 1 }) },
             intStaff: { table: 'staff_entries', transform: (item) => ({ project_id: projectId, staff_type: 'internal', role: item.role || '', count: item.count || 1, cost_hour: item.costHour || 20, h_ord: item.hOrd || 8, h_str: item.hStr || 0, h_fest: item.hFest || 0, h_nott: item.hNott || 0 }) },
             extStaff: { table: 'staff_entries', transform: (item) => ({ project_id: projectId, staff_type: 'external', role: item.role || '', count: item.count || 1, cost_hour: item.costHour || 15, h_ord: item.hOrd || 8, h_str: item.hStr || 0, h_fest: item.hFest || 0, h_nott: item.hNott || 0 }) },
@@ -89,7 +89,7 @@ export function useSupabaseProject(projectId) {
         setData(prev => ({ ...prev, [listField]: prev[listField].map(item => item.id === itemId ? { ...item, [field]: value } : item) }));
         const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', subRentals: 'cost_entries', purchases: 'cost_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
         const fieldMaps = {
-            eqItems: { desc: 'description', qty: 'qty', l: 'l', w: 'w', h: 'h', weightKg: 'weight_kg', costUnit: 'cost_unit', owned: 'owned', purchasePrice: 'purchase_price', totalUses: 'total_uses', usesUsed: 'uses_used' },
+            eqItems: { desc: 'description', supplier: 'supplier', qty: 'qty', coefficient: 'coefficient', l: 'l', w: 'w', h: 'h', weightKg: 'weight_kg', costUnit: 'cost_unit', owned: 'owned', purchasePrice: 'purchase_price', totalUses: 'total_uses', usesUsed: 'uses_used' },
             legs: { desc: 'description', route: 'route', cKm: 'custom_km', cTolls: 'custom_tolls', vType: 'vehicle_type', nVeh: 'n_vehicles', rentalDay: 'rental_day', rentalDays: 'rental_days', shared: 'shared' },
             intStaff: { role: 'role', count: 'count', costHour: 'cost_hour', hOrd: 'h_ord', hStr: 'h_str', hFest: 'h_fest', hNott: 'h_nott' },
             extStaff: { role: 'role', count: 'count', costHour: 'cost_hour', hOrd: 'h_ord', hStr: 'h_str', hFest: 'h_fest', hNott: 'h_nott' },

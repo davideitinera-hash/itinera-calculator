@@ -237,7 +237,8 @@ export default function ItineraV4({ projectId, onBack }) {
     const eqCalcs = d.eqItems.map(e => {
       const vol = e.qty * e.l * e.w * e.h;
       const weight = e.qty * e.weightKg;
-      const cost = e.qty * e.costUnit;
+      const coeff = e.coefficient ?? 1;
+      const cost = e.qty * e.costUnit * coeff;
       const depPerUse = e.owned && e.totalUses > 0 ? e.purchasePrice / e.totalUses : 0;
       const depTotal = e.owned ? depPerUse * e.qty : 0;
       const roiEvents = e.owned && e.costUnit > 0 ? Math.ceil(e.purchasePrice / e.costUnit) : 0;
@@ -401,7 +402,7 @@ export default function ItineraV4({ projectId, onBack }) {
       if (options.equipment && mapped.equipmentItems.length > 0) {
         for (const eq of mapped.equipmentItems) {
           await addItem('eqItems', {
-            desc: eq.desc, qty: eq.qty, l: eq.l, w: eq.w, h: eq.h,
+            desc: eq.desc, supplier: eq.supplier || '', qty: eq.qty, coefficient: eq.coefficient ?? 1, l: eq.l, w: eq.w, h: eq.h,
             weightKg: eq.weightKg, costUnit: eq.costUnit,
             owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0,
           });
@@ -577,15 +578,17 @@ export default function ItineraV4({ projectId, onBack }) {
             {/* ═══ EQUIPMENT ═══ */}
             <Card title={`Materiale & Ingombro | €${fmt(calc.totalEqCost)} | ${fmtD(calc.totalVol, 1)}m³ | ${fmt(calc.totalWeight)}kg`} icon="📦" open={isO("eq")} onToggle={() => tgl("eq")}>
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.8fr 0.4fr 0.45fr 0.45fr 0.45fr 0.5fr 0.55fr 0.55fr 0.5fr 0.6fr auto", gap: 3, minWidth: 820, marginBottom: 3 }}>
-                  {["Descrizione", "Qty", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "Costo", ""].map(h => <span key={h} style={{ fontSize: 8, color: "#999", fontWeight: 600 }}>{h}</span>)}
+                <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.4fr 0.4fr 0.45fr 0.45fr 0.45fr 0.5fr 0.55fr 0.55fr 0.5fr 0.4fr 0.6fr auto", gap: 3, minWidth: 960, marginBottom: 3 }}>
+                  {["Descrizione", "Fornitore", "Qty", "Coeff.", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "", "Costo", ""].map((h, i) => <span key={h + i} style={{ fontSize: 8, color: "#999", fontWeight: 600 }}>{h}</span>)}
                 </div>
                 {calc.eqCalcs.map((e, idx) => (
                   <div key={e.id} {...getDragPropsEq(idx)}>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto 1.8fr 0.4fr 0.45fr 0.45fr 0.45fr 0.5fr 0.55fr 0.55fr 0.5fr 0.6fr auto", gap: 3, minWidth: 820, marginBottom: 1, alignItems: "center" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1.8fr 1fr 0.4fr 0.4fr 0.45fr 0.45fr 0.45fr 0.5fr 0.55fr 0.55fr 0.5fr 0.4fr 0.6fr auto", gap: 3, minWidth: 960, marginBottom: 1, alignItems: "center" }}>
                       <span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span>
                       <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
+                      <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
                       <Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", v)} align="center" />
+                      <Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" />
                       <Inp type="number" value={e.l} onChange={v => updateObjList("eqItems", e.id, "l", v)} align="center" />
                       <Inp type="number" value={e.w} onChange={v => updateObjList("eqItems", e.id, "w", v)} align="center" />
                       <Inp type="number" value={e.h} onChange={v => updateObjList("eqItems", e.id, "h", v)} align="center" />
@@ -593,12 +596,12 @@ export default function ItineraV4({ projectId, onBack }) {
                       <div style={{ fontSize: 10, textAlign: "center", color: "#2E86AB", fontWeight: 600 }}>{fmtD2(e.vol)}</div>
                       <div style={{ fontSize: 10, textAlign: "center", color: "#e67e22", fontWeight: 600 }}>{fmt(e.weight)}</div>
                       <Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" />
+                      <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
                       <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
                       <X onClick={() => delObj("eqItems", e.id)} />
                     </div>
                     <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: 4, alignItems: "center", flexWrap: "wrap" }}>
                       <Chk label="Proprio" checked={e.owned} onChange={v => updateObjList("eqItems", e.id, "owned", v)} />
-                      {!e.owned && <SupplierInput value={e.supplier || ''} onChange={v => updateObjList('eqItems', e.id, 'supplier', v)} placeholder="Fornitore materiale" suppliersList={suppliersList} onAutoSave={autoSaveSupplier} />}
                       {e.owned && <>
                         <F label="Acquisto €" value={e.purchasePrice} onChange={v => updateObjList("eqItems", e.id, "purchasePrice", v)} w="0.5" />
                         <F label="Utilizzi vita" value={e.totalUses} onChange={v => updateObjList("eqItems", e.id, "totalUses", v)} w="0.4" />
@@ -611,7 +614,7 @@ export default function ItineraV4({ projectId, onBack }) {
                   </div>
                 ))}
               </div>
-              <Btn onClick={() => addObj("eqItems", { desc: "", qty: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0 })} s>+ Materiale</Btn>
+              <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0 })} s>+ Materiale</Btn>
               <Sub text={`Volume: ${fmtD2(calc.totalVol)}m³ → Effettivo (÷0.70): ${fmtD(calc.totalVolEff)}m³ | Peso: ${fmt(calc.totalWeight)}kg | Min: ${calc.recVeh.name} | Ammort: €${fmt(calc.totalDepreciation)}`} />
               {calc.weightOverVol && <Warn text={`⚠️ PESO: ${fmt(calc.totalWeight)}kg supera portata veicolo per volume. Serve veicolo più grande o più viaggi!`} />}
             </Card>
