@@ -132,6 +132,7 @@ export default function RentmanImportModal({ onClose, onImport }) {
                                 📋 Info Progetto
                             </div>
                             <div>
+                                <PreviewRow label="N° Progetto" value={preview.rentmanProject.projectNumber} />
                                 <PreviewRow label="Nome" value={preview.rentmanProject.projectName} />
                                 <PreviewRow label="Cliente" value={preview.rentmanProject.clientName} />
                                 <PreviewRow label="Account Manager" value={preview.rentmanProject.accountManager} />

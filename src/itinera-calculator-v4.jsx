@@ -431,7 +431,7 @@ export default function ItineraV4({ projectId, onBack }) {
       <GlobalStyles />
       <div style={{ background: '#1B3A5C', padding: isMobile ? '10px 12px' : '8px 16px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 100 }}>
         <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>← Progetti</button>
-        <span style={{ color: '#fff', fontSize: isMobile ? 12 : 14, fontWeight: 700 }}>ITINERA — {d.projectName}</span>
+        <span style={{ color: '#fff', fontSize: isMobile ? 12 : 14, fontWeight: 700 }}>ITINERA — {d.projectCode ? `[${d.projectCode}] ` : ''}{d.projectName}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button onClick={() => setShowRentmanModal(true)} style={{ background: 'rgba(46,134,171,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>📡 Rentman</button>
           <ExportPDFButton projectData={d} calc={calc} appConfig={appConfig} style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6 }} />
@@ -440,7 +440,7 @@ export default function ItineraV4({ projectId, onBack }) {
       <div style={{ padding: isMobile ? '4px 12px' : '4px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0' }}>
         <Breadcrumb items={[
           { label: 'Dashboard', onClick: onBack },
-          { label: d?.projectName || 'Progetto' }
+          { label: d?.projectCode ? `[${d.projectCode}] ${d.projectName}` : (d?.projectName || 'Progetto') }
         ]} />
       </div>
       {activeAlerts.length > 0 && (
@@ -508,7 +508,7 @@ export default function ItineraV4({ projectId, onBack }) {
           <div className="hero-dashboard" style={{ background: "#fff", borderRadius: 10, padding: "12px 16px", marginBottom: 10, border: `2px solid ${calc.marginColor}` }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", paddingBottom: 10, marginBottom: 10 }}>
               <div>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>{d.projectName} - {d.clientName}</div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>{d.projectCode ? `[${d.projectCode}] ` : ''}{d.projectName} - {d.clientName}</div>
                 <div style={{ fontSize: 10, color: "#888" }}>{d.eventType} | {d.eventDate} | {d.totalWorkDays} gg</div>
               </div>
               <M label="MARGINE NETTO" value={`€${fmt(calc.margin)}`} color={calc.marginColor} />
@@ -557,6 +557,7 @@ export default function ItineraV4({ projectId, onBack }) {
           <div id="section-progetto">
             <Card title="Progetto & Ricavi" icon="📋" open={isO("pr")} onToggle={() => tgl("pr")}>
               <R>
+                <F label="Cod. Commessa" value={d.projectCode} onChange={v => updateF("projectCode", v)} type="text" w="0.7" />
                 <F label="Nome progetto" value={d.projectName} onChange={v => updateF("projectName", v)} type="text" w="2" />
                 <F label="Cliente" value={d.clientName} onChange={v => updateF("clientName", v)} type="text" />
                 <Sel label="Tipo" value={d.eventType} onChange={v => updateF("eventType", v)} options={["Wedding", "Corporate", "Fiera", "Festival", "Privato", "Istituzionale"]} />

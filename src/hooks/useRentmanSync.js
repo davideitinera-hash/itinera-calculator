@@ -62,6 +62,7 @@ export function useRentmanSync() {
             if (project.eventDate) projectFields.eventDate = project.eventDate;
             if (project.revenueGross != null) projectFields.revenueGross = project.revenueGross;
             if (project.totalWorkDays != null) projectFields.totalWorkDays = project.totalWorkDays;
+            if (project.projectNumber != null) projectFields.projectCode = String(project.projectNumber);
         }
 
         const equipmentItems = (equipment || []).map(e => ({

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 function dbToState(project, equipment, transport, intStaff, extStaff, costs, phases) {
     return {
-        projectName: project.project_name, eventType: project.event_type, eventDate: project.event_date || '', clientName: project.client_name || '', totalWorkDays: project.total_work_days, status: project.status,
+        projectCode: project.project_code || '', projectName: project.project_name, eventType: project.event_type, eventDate: project.event_date || '', clientName: project.client_name || '', totalWorkDays: project.total_work_days, status: project.status,
         revenueGross: Number(project.revenue_gross), discType: project.disc_type, discVal: Number(project.disc_val),
         whCount: project.wh_count, whRate: Number(project.wh_rate), whHLoad: Number(project.wh_h_load), whHUnload: Number(project.wh_h_unload),
         planHours: Number(project.plan_hours), planRate: Number(project.plan_rate),
@@ -58,7 +58,7 @@ export function useSupabaseProject(projectId) {
 
     const updateField = useCallback(async (field, value) => {
         setData(prev => ({ ...prev, [field]: value }));
-        const fieldMap = { projectName: 'project_name', clientName: 'client_name', eventType: 'event_type', eventDate: 'event_date', totalWorkDays: 'total_work_days', status: 'status', revenueGross: 'revenue_gross', discType: 'disc_type', discVal: 'disc_val', whCount: 'wh_count', whRate: 'wh_rate', whHLoad: 'wh_h_load', whHUnload: 'wh_h_unload', planHours: 'plan_hours', planRate: 'plan_rate', mealCost: 'meal_cost', mealsDay: 'meals_day', workDays: 'work_days', hotelNights: 'hotel_nights', hotelCost: 'hotel_cost', contingencyPct: 'contingency_pct', paymentDays: 'payment_days', interestRate: 'interest_rate' };
+        const fieldMap = { projectCode: 'project_code', projectName: 'project_name', clientName: 'client_name', eventType: 'event_type', eventDate: 'event_date', totalWorkDays: 'total_work_days', status: 'status', revenueGross: 'revenue_gross', discType: 'disc_type', discVal: 'disc_val', whCount: 'wh_count', whRate: 'wh_rate', whHLoad: 'wh_h_load', whHUnload: 'wh_h_unload', planHours: 'plan_hours', planRate: 'plan_rate', mealCost: 'meal_cost', mealsDay: 'meals_day', workDays: 'work_days', hotelNights: 'hotel_nights', hotelCost: 'hotel_cost', contingencyPct: 'contingency_pct', paymentDays: 'payment_days', interestRate: 'interest_rate' };
         const dbField = fieldMap[field];
         if (dbField) await supabase.from('projects').update({ [dbField]: value }).eq('id', projectId);
     }, [projectId]);
