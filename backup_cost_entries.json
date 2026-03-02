@@ -1,0 +1,28 @@
+[
+    {
+        "id": "f7c365b6-5468-434b-85cf-0535d372668e",
+        "project_id": "d0d07e26-e41b-4796-86ed-5de6a9736440",
+        "category": "sub_rental",
+        "description": "Cariola Vintage",
+        "supplier": "test",
+        "cost": "2.00",
+        "quantity": 1,
+        "revenue": "0",
+        "vat_included": false,
+        "rentman_id": 1520,
+        "sort_order": 0
+    },
+    {
+        "id": "39dcc822-2096-41bb-80db-e049a6388dfd",
+        "project_id": "d0d07e26-e41b-4796-86ed-5de6a9736440",
+        "category": "sub_rental",
+        "description": "3",
+        "supplier": "New Supplier",
+        "cost": "10.00",
+        "quantity": 5,
+        "revenue": "25",
+        "vat_included": false,
+        "rentman_id": null,
+        "sort_order": 0
+    }
+]

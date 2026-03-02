@@ -11,12 +11,10 @@ function dbToState(project, equipment, transport, intStaff, extStaff, costs, pha
         mealCost: Number(project.meal_cost), mealsDay: project.meals_day, workDays: project.work_days, hotelNights: project.hotel_nights, hotelCost: Number(project.hotel_cost),
         contingencyPct: Number(project.contingency_pct), paymentDays: project.payment_days, interestRate: Number(project.interest_rate),
         rentmanProjectId: project.rentman_project_id || null,
-        eqItems: equipment.map(e => ({ id: e.id, desc: e.description, supplier: e.supplier || '', qty: e.qty, coefficient: Number(e.coefficient ?? 1), l: Number(e.l), w: Number(e.w), h: Number(e.h), weightKg: Number(e.weight_kg), costUnit: Number(e.cost_unit), sellPrice: Number(e.sell_price || 0), owned: e.owned, purchasePrice: Number(e.purchase_price), totalUses: e.total_uses, usesUsed: e.uses_used, rentmanId: e.rentman_id || null })),
+        eqItems: equipment.map(e => ({ id: e.id, desc: e.description, supplier: e.supplier || '', qty: e.qty, coefficient: Number(e.coefficient ?? 1), l: Number(e.l), w: Number(e.w), h: Number(e.h), weightKg: Number(e.weight_kg), costUnit: Number(e.cost_unit), sellPrice: Number(e.sell_price || 0), owned: e.owned, purchasePrice: Number(e.purchase_price), totalUses: e.total_uses, usesUsed: e.uses_used, rentmanId: e.rentman_id || null, itemCategory: e.item_category || 'Proprio' })),
         legs: transport.map(t => ({ id: t.id, desc: t.description, route: t.route, cKm: Number(t.custom_km), cTolls: Number(t.custom_tolls), vType: t.vehicle_type, nVeh: t.n_vehicles, rentalDay: Number(t.rental_day), rentalDays: t.rental_days, shared: t.shared })),
         intStaff: intStaff.map(s => ({ id: s.id, role: s.role, count: s.count, costHour: Number(s.cost_hour), hOrd: Number(s.h_ord), hStr: Number(s.h_str), hFest: Number(s.h_fest), hNott: Number(s.h_nott) })),
         extStaff: extStaff.map(s => ({ id: s.id, role: s.role, count: s.count, costHour: Number(s.cost_hour), hOrd: Number(s.h_ord), hStr: Number(s.h_str), hFest: Number(s.h_fest), hNott: Number(s.h_nott) })),
-        subRentals: costs.filter(c => c.category === 'sub_rental').map(c => ({ id: c.id, supplier: c.supplier, desc: c.description, cost: Number(c.cost), qty: c.quantity || 1, revenue: Number(c.revenue || 0), vatIncl: c.vat_included, rentmanId: c.rentman_id || null })),
-        purchases: costs.filter(c => c.category === 'purchase').map(c => ({ id: c.id, supplier: c.supplier, desc: c.description, cost: Number(c.cost), qty: c.quantity || 1, vatIncl: c.vat_included, rentmanId: c.rentman_id || null })),
         analytics: costs.filter(c => c.category === 'analytics').map(c => ({ id: c.id, desc: c.description, cost: Number(c.cost), rentmanId: c.rentman_id || null })),
         damages: costs.filter(c => c.category === 'damage').map(c => ({ id: c.id, desc: c.description, cost: Number(c.cost), rentmanId: c.rentman_id || null })),
         misc: costs.filter(c => c.category === 'misc').map(c => ({ id: c.id, desc: c.description, cost: Number(c.cost), qty: c.quantity || 1, rentmanId: c.rentman_id || null })),
@@ -66,12 +64,10 @@ export function useSupabaseProject(projectId) {
 
     const addItem = useCallback(async (listField, newItem) => {
         const tableMap = {
-            eqItems: { table: 'equipment_items', transform: (item) => ({ project_id: projectId, description: item.desc || '', supplier: item.supplier || '', qty: item.qty || 1, coefficient: item.coefficient ?? 1, l: item.l || 0, w: item.w || 0, h: item.h || 0, weight_kg: item.weightKg || 0, cost_unit: item.costUnit || 0, sell_price: item.sellPrice || 0, owned: item.owned || false, purchase_price: item.purchasePrice || 0, total_uses: item.totalUses || 1, uses_used: item.usesUsed || 0, rentman_id: item.rentmanId || null }) },
+            eqItems: { table: 'equipment_items', transform: (item) => ({ project_id: projectId, description: item.desc || '', supplier: item.supplier || '', qty: item.qty || 1, coefficient: item.coefficient ?? 1, l: item.l || 0, w: item.w || 0, h: item.h || 0, weight_kg: item.weightKg || 0, cost_unit: item.costUnit || 0, sell_price: item.sellPrice || 0, owned: item.owned || false, purchase_price: item.purchasePrice || 0, total_uses: item.totalUses || 1, uses_used: item.usesUsed || 0, rentman_id: item.rentmanId || null, item_category: item.itemCategory || 'Proprio' }) },
             legs: { table: 'transport_legs', transform: (item) => ({ project_id: projectId, description: item.desc || '', route: item.route || '', custom_km: item.cKm || 0, custom_tolls: item.cTolls || 0, vehicle_type: item.vType || 0, n_vehicles: item.nVeh || 1, rental_day: item.rentalDay || 150, rental_days: item.rentalDays || 1, shared: item.shared || 1 }) },
             intStaff: { table: 'staff_entries', transform: (item) => ({ project_id: projectId, staff_type: 'internal', role: item.role || '', count: item.count || 1, cost_hour: item.costHour || 20, h_ord: item.hOrd || 8, h_str: item.hStr || 0, h_fest: item.hFest || 0, h_nott: item.hNott || 0 }) },
             extStaff: { table: 'staff_entries', transform: (item) => ({ project_id: projectId, staff_type: 'external', role: item.role || '', count: item.count || 1, cost_hour: item.costHour || 15, h_ord: item.hOrd || 8, h_str: item.hStr || 0, h_fest: item.hFest || 0, h_nott: item.hNott || 0 }) },
-            subRentals: { table: 'cost_entries', transform: (item) => ({ project_id: projectId, category: 'sub_rental', description: item.desc || '', supplier: item.supplier || '', cost: item.cost || 0, quantity: item.qty || 1, revenue: item.revenue || 0, vat_included: item.vatIncl || false, rentman_id: item.rentmanId || null }) },
-            purchases: { table: 'cost_entries', transform: (item) => ({ project_id: projectId, category: 'purchase', description: item.desc || '', supplier: item.supplier || '', cost: item.cost || 0, quantity: item.qty || 1, vat_included: item.vatIncl || false, rentman_id: item.rentmanId || null }) },
             analytics: { table: 'cost_entries', transform: (item) => ({ project_id: projectId, category: 'analytics', description: item.desc || '', cost: item.cost || 0, rentman_id: item.rentmanId || null }) },
             damages: { table: 'cost_entries', transform: (item) => ({ project_id: projectId, category: 'damage', description: item.desc || '', cost: item.cost || 0, rentman_id: item.rentmanId || null }) },
             misc: { table: 'cost_entries', transform: (item) => ({ project_id: projectId, category: 'misc', description: item.desc || '', cost: item.cost || 0, quantity: item.qty || 1, rentman_id: item.rentmanId || null }) },
@@ -91,14 +87,12 @@ export function useSupabaseProject(projectId) {
 
     const updateItem = useCallback(async (listField, itemId, field, value) => {
         setData(prev => ({ ...prev, [listField]: prev[listField].map(item => item.id === itemId ? { ...item, [field]: value } : item) }));
-        const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', subRentals: 'cost_entries', purchases: 'cost_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
+        const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
         const fieldMaps = {
-            eqItems: { desc: 'description', supplier: 'supplier', qty: 'qty', coefficient: 'coefficient', l: 'l', w: 'w', h: 'h', weightKg: 'weight_kg', costUnit: 'cost_unit', sellPrice: 'sell_price', owned: 'owned', purchasePrice: 'purchase_price', totalUses: 'total_uses', usesUsed: 'uses_used' },
+            eqItems: { desc: 'description', supplier: 'supplier', qty: 'qty', coefficient: 'coefficient', l: 'l', w: 'w', h: 'h', weightKg: 'weight_kg', costUnit: 'cost_unit', sellPrice: 'sell_price', owned: 'owned', purchasePrice: 'purchase_price', totalUses: 'total_uses', usesUsed: 'uses_used', itemCategory: 'item_category' },
             legs: { desc: 'description', route: 'route', cKm: 'custom_km', cTolls: 'custom_tolls', vType: 'vehicle_type', nVeh: 'n_vehicles', rentalDay: 'rental_day', rentalDays: 'rental_days', shared: 'shared' },
             intStaff: { role: 'role', count: 'count', costHour: 'cost_hour', hOrd: 'h_ord', hStr: 'h_str', hFest: 'h_fest', hNott: 'h_nott' },
             extStaff: { role: 'role', count: 'count', costHour: 'cost_hour', hOrd: 'h_ord', hStr: 'h_str', hFest: 'h_fest', hNott: 'h_nott' },
-            subRentals: { desc: 'description', supplier: 'supplier', cost: 'cost', qty: 'quantity', revenue: 'revenue', vatIncl: 'vat_included' },
-            purchases: { desc: 'description', supplier: 'supplier', cost: 'cost', qty: 'quantity', vatIncl: 'vat_included' },
             analytics: { desc: 'description', cost: 'cost' },
             damages: { desc: 'description', cost: 'cost' },
             misc: { desc: 'description', cost: 'cost', qty: 'quantity' },
@@ -111,14 +105,14 @@ export function useSupabaseProject(projectId) {
 
     const deleteItem = useCallback(async (listField, itemId) => {
         setData(prev => ({ ...prev, [listField]: prev[listField].filter(item => item.id !== itemId) }));
-        const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', subRentals: 'cost_entries', purchases: 'cost_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
+        const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
         const table = tableMap[listField];
         if (table) await supabase.from(table).delete().eq('id', itemId);
     }, []);
 
     const reorderItems = useCallback(async (listField, newOrder) => {
         setData(prev => ({ ...prev, [listField]: newOrder }));
-        const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', subRentals: 'cost_entries', purchases: 'cost_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
+        const tableMap = { eqItems: 'equipment_items', legs: 'transport_legs', intStaff: 'staff_entries', extStaff: 'staff_entries', analytics: 'cost_entries', damages: 'cost_entries', misc: 'cost_entries', phases: 'production_phases' };
         const table = tableMap[listField];
         if (table) {
             for (let i = 0; i < newOrder.length; i++) {

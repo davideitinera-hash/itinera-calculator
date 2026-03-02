@@ -295,7 +295,7 @@ export default function ItineraV4({ projectId, onBack }) {
     supabase.from('suppliers').select('id, name, category').eq('is_active', true).order('name').then(({ data }) => { if (data) setSuppliersList(data); });
   }, []);
   useEffect(() => {
-    const sections = ['progetto', 'materiale', 'trasporto', 'staff', 'costi', 'fasi', 'riepilogo'];
+    const sections = ['progetto', 'materiale', 'trasporto', 'staff', 'costi', 'fasi', 'riepilogo', 'subnoleggi', 'acquisti'];
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(e => { if (e.isIntersecting) setActiveNav(e.target.id.replace('section-', '')); });
     }, { rootMargin: '-100px 0px -60% 0px' });
@@ -350,19 +350,6 @@ export default function ItineraV4({ projectId, onBack }) {
     const recVeh = VEH_DYN.find(v => v.vol >= totalVolEff && v.payload >= totalWeight) || VEH_DYN[VEH_DYN.length - 2];
     const weightOverVol = totalWeight > 0 && totalVolEff > 0 && VEH_DYN.find(v => v.vol >= totalVolEff) && VEH_DYN.find(v => v.vol >= totalVolEff).payload < totalWeight;
 
-    // Purchases/Subs
-    const subCalcs = d.subRentals.map(s => {
-      const totalCost = s.cost * (s.qty || 1);
-      const totalRevenue = (s.revenue || 0) * (s.qty || 1);
-      const profit = totalRevenue - totalCost;
-      const markupPct = s.cost > 0 ? ((s.revenue || 0) - s.cost) / s.cost * 100 : 0;
-      return { ...s, totalCost, totalRevenue, profit, markupPct };
-    });
-    const totalSub = subCalcs.reduce((s, r) => s + r.totalCost, 0);
-    const totalSubRevenue = subCalcs.reduce((s, r) => s + r.totalRevenue, 0);
-    const totalSubProfit = subCalcs.reduce((s, r) => s + r.profit, 0);
-    const totalPurch = d.purchases.reduce((s, r) => s + r.cost * (r.qty || 1), 0);
-
     // Transport
     const legCalcs = d.legs.map(leg => {
       const rd = ROUTES_DYN[leg.route] || { km: leg.cKm, tolls: leg.cTolls };
@@ -397,8 +384,18 @@ export default function ItineraV4({ projectId, onBack }) {
     const totalMisc = d.misc.reduce((s, m) => s + m.cost, 0);
     const totalPhHours = d.phases.reduce((s, p) => s + p.crew * p.hours, 0);
 
+    // Category analytics
+    const catStats = ['Proprio', 'Sub-noleggio', 'Acquisto'].map(cat => {
+      const items = eqCalcs.filter(e => e.itemCategory === cat);
+      const catCost = items.reduce((s, e) => s + e.cost, 0);
+      const catRev = items.reduce((s, e) => s + e.revenue, 0);
+      const catMarginPct = catRev > 0 ? (catRev - catCost) / catRev * 100 : null;
+      const incidencePct = totalEqCost > 0 ? catCost / totalEqCost * 100 : 0;
+      return { cat, cost: catCost, rev: catRev, marginPct: catMarginPct, incidencePct, count: items.length };
+    });
+
     // Grand Totals
-    const costMaterial = totalEqCost + totalSub + totalPurch;
+    const costMaterial = totalEqCost;
     const costsBeforeContingency = costMaterial + totalTransport + totalAllStaff + totalPlanCost + totalAccom + totalAn + totalDmg + totalMisc + totalDepreciation;
     const contingencyAmt = costsBeforeContingency * d.contingencyPct / 100;
     const totalCosts = costsBeforeContingency + contingencyAmt;
@@ -413,8 +410,8 @@ export default function ItineraV4({ projectId, onBack }) {
 
     return {
       discAmt, revenueNet, margin, marginPct, markupPct, marginColor, marginPerDay,
-      eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalEqRevenue, totalEqMargin, totalDepreciation, recVeh, weightOverVol,
-      subCalcs, totalSub, totalSubRevenue, totalSubProfit, totalPurch, legCalcs, totalTransport, intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
+      eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalEqRevenue, totalEqMargin, totalDepreciation, recVeh, weightOverVol, catStats,
+      legCalcs, totalTransport, intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
       totalPlanCost, crewMeals, totalAccom, totalAn, totalDmg, totalMisc, totalPhHours,
       costMaterial, costsBeforeContingency, contingencyAmt, totalCosts, financialCost, totalCostsAll
     };
@@ -1054,6 +1051,8 @@ export default function ItineraV4({ projectId, onBack }) {
               { id: 'costi', label: 'Costi', icon: '💶' },
               { id: 'fasi', label: 'Fasi Produzione', icon: '📅' },
               { id: 'riepilogo', label: 'Riepilogo', icon: '📊' },
+              { id: 'subnoleggi', label: 'Sub-noleggi', icon: '🤝' },
+              { id: 'acquisti', label: 'Acquisti', icon: '🛒' },
             ].map(s => (
               <button key={s.id} onClick={() => scrollToSection(s.id)} style={{
                 display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
@@ -1152,6 +1151,27 @@ export default function ItineraV4({ projectId, onBack }) {
           <div id="section-materiale">
             {/* ═══ EQUIPMENT ═══ */}
             <Card title={`Materiale | Costo €${fmt(calc.totalEqCost)} | Ricavo €${fmt(calc.totalEqRevenue)} | Margine €${fmt(calc.totalEqMargin)} | ${fmtD(calc.totalVol, 1)}m³ | ${fmt(calc.totalWeight)}kg`} icon="📦" open={isO("eq")} onToggle={() => tgl("eq")}>
+              {/* Material Analytics Cards */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                {calc.catStats.map(cs => {
+                  const icons = { 'Proprio': '🔵', 'Sub-noleggio': '🟠', 'Acquisto': '🟣' };
+                  const colors = { 'Proprio': '#2E86AB', 'Sub-noleggio': '#e67e22', 'Acquisto': '#8e44ad' };
+                  const c = colors[cs.cat];
+                  return (
+                    <div key={cs.cat} style={{ flex: '1 1 200px', background: c + '08', border: `1px solid ${c}30`, borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: c, marginBottom: 4 }}>{icons[cs.cat]} {cs.cat} ({cs.count})</div>
+                      <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#555' }}>
+                        <span>Costo: <strong>€{fmt(cs.cost)}</strong></span>
+                        <span>Ricavo: <strong style={{ color: '#2E86AB' }}>€{fmt(cs.rev)}</strong></span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#555', marginTop: 2 }}>
+                        <span>Margine: <strong style={{ color: cs.marginPct !== null && cs.marginPct >= 0 ? '#27ae60' : '#e74c3c' }}>{cs.marginPct !== null ? `${fmtD(cs.marginPct)}%` : 'N/A'}</strong></span>
+                        <span>Incidenza: <strong>{fmtD(cs.incidencePct)}%</strong></span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               <style>{`
                 .eq-col-hl input { border: 2px solid #2E86AB !important; background: #f0f7ff !important; font-weight: 700 !important; color: #1B3A5C !important; }
                 .eq-col-sell input { border: 2px solid #27ae60 !important; background: #f0fff5 !important; font-weight: 700 !important; color: #1a5c2e !important; }
@@ -1189,7 +1209,11 @@ export default function ItineraV4({ projectId, onBack }) {
                         <X onClick={() => delObj("eqItems", e.id)} />
                       </div>
                       <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: 4, alignItems: "center", flexWrap: "wrap" }}>
-                        <Chk label="Proprio" checked={e.owned} onChange={v => updateObjList("eqItems", e.id, "owned", v)} />
+                        <select value={e.itemCategory || 'Proprio'} onChange={ev => updateObjList("eqItems", e.id, "itemCategory", ev.target.value)} style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: e.itemCategory === 'Sub-noleggio' ? '#e67e22' : e.itemCategory === 'Acquisto' ? '#8e44ad' : '#2E86AB', background: e.itemCategory === 'Sub-noleggio' ? '#fef3e8' : e.itemCategory === 'Acquisto' ? '#f5eef8' : '#eef6fb' }}>
+                          <option value="Proprio">🔵 Proprio</option>
+                          <option value="Sub-noleggio">🟠 Sub-noleggio</option>
+                          <option value="Acquisto">🟣 Acquisto</option>
+                        </select>
                         {e.owned && <>
                           <F label="Acquisto €" value={e.purchasePrice} onChange={v => updateObjList("eqItems", e.id, "purchasePrice", v)} w="0.5" />
                           <F label="Utilizzi vita" value={e.totalUses} onChange={v => updateObjList("eqItems", e.id, "totalUses", v)} w="0.4" />
@@ -1232,58 +1256,82 @@ export default function ItineraV4({ projectId, onBack }) {
 
           </div>
 
-          {/* ═══ SUB-RENTALS & PURCHASES ═══ */}
-          <div style={{ display: "flex", flexDirection: isMobile ? 'column' : 'row', gap: 10 }} className="no-print">
-            <div style={{ flex: 1 }}>
-              <Card title={`Sub-noleggi | Costo €${fmt(calc.totalSub)} | Ricavo €${fmt(calc.totalSubRevenue)} | Guadagno €${fmt(calc.totalSubProfit)}`} icon="🔄" open={isO("sb")} onToggle={() => tgl("sb")}>
-                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.5fr 0.5fr 0.4fr 0.5fr 0.6fr 0.6fr 0.5fr 0.6fr auto", gap: 3, minWidth: 780, marginBottom: 3 }}>
-                    {["Fornitore", "Descrizione", "Costo €/pz", "Qty", "Ricavo €/pz", "Costo Tot", "Ricavo Tot", "Ricarico %", "Guadagno €", ""].map(h => <span key={h} style={{ fontSize: 8, color: "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
-                  </div>
-                  {calc.subCalcs.map(s => (
-                    <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1.5fr 0.5fr 0.4fr 0.5fr 0.6fr 0.6fr 0.5fr 0.6fr auto", gap: 3, minWidth: 780, marginBottom: 2, alignItems: "center" }}>
-                      <div><SupplierInput value={s.supplier || ''} onChange={v => updateObjList('subRentals', s.id, 'supplier', v)} placeholder="Fornitore" suppliersList={suppliersList} onAutoSave={autoSaveSupplier} /></div>
-                      <Inp value={s.desc} onChange={v => updateObjList("subRentals", s.id, "desc", v)} ph="Descrizione" />
-                      <Inp type="number" value={s.cost} onChange={v => updateObjList("subRentals", s.id, "cost", v)} align="right" />
-                      <Inp type="number" value={s.qty} onChange={v => updateObjList("subRentals", s.id, "qty", v)} align="center" vr={{ min: 0, max: 9999 }} />
-                      <Inp type="number" value={s.revenue} onChange={v => updateObjList("subRentals", s.id, "revenue", v)} align="right" />
-                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 600, color: "#555" }}>€{fmt(s.totalCost)}</div>
-                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 600, color: "#2E86AB" }}>€{fmt(s.totalRevenue)}</div>
-                      <div style={{ fontSize: 10, textAlign: "center", fontWeight: 600, color: s.markupPct >= 0 ? "#27ae60" : "#e74c3c" }}>{s.cost > 0 ? `${fmtD(s.markupPct)}%` : '—'}</div>
-                      <div style={{ fontSize: 11, textAlign: "right", fontWeight: 700, color: s.profit >= 0 ? "#27ae60" : "#e74c3c" }}>€{fmt(s.profit)}</div>
-                      <X onClick={() => delObj("subRentals", s.id)} />
-                    </div>
-                  ))}
-                  {calc.subCalcs.length > 0 && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.5fr 0.5fr 0.4fr 0.5fr 0.6fr 0.6fr 0.5fr 0.6fr auto", gap: 3, minWidth: 780, marginTop: 4, paddingTop: 4, borderTop: "1px solid #e0e6ed", alignItems: "center" }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#1B3A5C", gridColumn: "span 5" }}>TOTALI</span>
-                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#555" }}>€{fmt(calc.totalSub)}</div>
-                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#2E86AB" }}>€{fmt(calc.totalSubRevenue)}</div>
-                      <div style={{ fontSize: 10, textAlign: "center", fontWeight: 700, color: calc.totalSub > 0 ? (calc.totalSubProfit >= 0 ? "#27ae60" : "#e74c3c") : "#999" }}>{calc.totalSub > 0 ? `${fmtD((calc.totalSubRevenue - calc.totalSub) / calc.totalSub * 100)}%` : '—'}</div>
-                      <div style={{ fontSize: 11, textAlign: "right", fontWeight: 800, color: calc.totalSubProfit >= 0 ? "#27ae60" : "#e74c3c" }}>€{fmt(calc.totalSubProfit)}</div>
-                      <span></span>
-                    </div>
-                  )}
+          {/* ═══ SUB-NOLEGGI (Filtered Smart View) ═══ */}
+          <div id="section-subnoleggi">
+            <Card title={`Sub-noleggi | Costo €${fmt(calc.catStats[1].cost)} | Ricavo €${fmt(calc.catStats[1].rev)} | ${calc.catStats[1].count} items`} icon="🤝" open={isO("sn")} onToggle={() => tgl("sn")}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, marginBottom: 3, alignItems: "end" }}>
+                  {["Descrizione", "Fornitore", "Qty", "Coeff.", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""].map((h, i) => {
+                    const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
+                    const hlSell = h === "Vendita €/pz";
+                    const hl = hlCost || hlSell;
+                    return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#fff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>;
+                  })}
                 </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-                  <Btn onClick={() => addObj("subRentals", { supplier: "", desc: "", cost: 0, qty: 1, revenue: 0, vatIncl: false })} s>+ Sub-noleggio</Btn>
+                {calc.eqCalcs.filter(e => e.itemCategory === 'Sub-noleggio').map(e => {
+                  const mColor = e.marginEur > 0 ? '#27ae60' : e.marginEur < 0 ? '#e74c3c' : '#999';
+                  return (
+                    <div key={e.id} style={{ marginBottom: 4 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, alignItems: "center" }}>
+                        <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
+                        <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
+                        <Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" />
+                        <Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" />
+                        <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
+                        <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
+                        <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
+                        <X onClick={() => delObj("eqItems", e.id)} />
+                      </div>
+                      <div style={{ fontSize: 9, padding: '2px 8px', color: mColor, fontWeight: 600 }}>
+                        Margine: €{fmt(e.marginEur)} | Margine %: {e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'} | Ricarico: {e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0, itemCategory: 'Sub-noleggio' })} s>+ Sub-noleggio</Btn>
+            </Card>
+          </div>
+
+          {/* ═══ ACQUISTI (Filtered Smart View) ═══ */}
+          <div id="section-acquisti">
+            <Card title={`Acquisti | Costo €${fmt(calc.catStats[2].cost)} | Ricavo €${fmt(calc.catStats[2].rev)} | ${calc.catStats[2].count} items`} icon="🛒" open={isO("aq")} onToggle={() => tgl("aq")}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, marginBottom: 3, alignItems: "end" }}>
+                  {["Descrizione", "Fornitore", "Qty", "Coeff.", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""].map((h, i) => {
+                    const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
+                    const hlSell = h === "Vendita €/pz";
+                    const hl = hlCost || hlSell;
+                    return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#fff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>;
+                  })}
                 </div>
-              </Card>
-            </div>
-            <div style={{ flex: 1 }}>
-              <Card title={`Acquisti | €${fmt(calc.totalPurch)}`} icon="🛒" open={isO("pu")} onToggle={() => tgl("pu")}>
-                {d.purchases.map(p => (
-                  <R key={p.id}>
-                    <div style={{ flex: 1 }}><label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 2 }}>Fornitore</label><SupplierInput value={p.supplier || ''} onChange={v => updateObjList('purchases', p.id, 'supplier', v)} placeholder="Cerca fornitore..." suppliersList={suppliersList} onAutoSave={autoSaveSupplier} /></div>
-                    <F label="Descrizione" value={p.desc} onChange={v => updateObjList("purchases", p.id, "desc", v)} type="text" w="1" />
-                    <F label="Costo €" value={p.cost} onChange={v => updateObjList("purchases", p.id, "cost", v)} w="0.6" />
-                    <div style={{ paddingTop: 12 }}><Chk label="IVA incl." checked={p.vatIncl} onChange={v => updateObjList("purchases", p.id, "vatIncl", v)} /></div>
-                    <X onClick={() => delObj("purchases", p.id)} />
-                  </R>
-                ))}
-                <Btn onClick={() => addObj("purchases", { supplier: "", desc: "", cost: 0, vatIncl: false })} s>+ Acquisto</Btn>
-              </Card>
-            </div>
+                {calc.eqCalcs.filter(e => e.itemCategory === 'Acquisto').map(e => {
+                  const mColor = e.marginEur > 0 ? '#27ae60' : e.marginEur < 0 ? '#e74c3c' : '#999';
+                  return (
+                    <div key={e.id} style={{ marginBottom: 4 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, alignItems: "center" }}>
+                        <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
+                        <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
+                        <Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" />
+                        <Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" />
+                        <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
+                        <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
+                        <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
+                        <X onClick={() => delObj("eqItems", e.id)} />
+                      </div>
+                      <div style={{ fontSize: 9, padding: '2px 8px', color: mColor, fontWeight: 600 }}>
+                        Margine: €{fmt(e.marginEur)} | Margine %: {e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'} | Ricarico: {e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0, itemCategory: 'Acquisto' })} s>+ Acquisto</Btn>
+            </Card>
           </div>
 
           <div id="section-trasporto">
