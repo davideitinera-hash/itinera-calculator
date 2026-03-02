@@ -212,29 +212,55 @@ function SupplierInput({ value, onChange, placeholder, suppliersList, onAutoSave
 
 // Staff Sub-component mapping (moved outside of main component)
 const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delObj, addObj }) => {
-  const cols = isMobile ? "1.8fr 0.4fr 0.6fr 0.4fr 0.4fr 0.4fr 0.4fr 0.7fr auto" : "2fr 0.5fr 0.7fr 0.5fr 0.5fr 0.5fr 0.5fr 0.8fr auto";
-  const mw = isMobile ? 550 : 650;
+  const cols = isMobile
+    ? "1.6fr 0.35fr 0.5fr 0.35fr 0.35fr 0.35fr 0.35fr 0.6fr 0.6fr 0.5fr auto"
+    : "1.8fr 0.4fr 0.6fr 0.4fr 0.4fr 0.4fr 0.4fr 0.7fr 0.7fr 0.6fr auto";
+  const mw = isMobile ? 700 : 800;
+  const totCost = calcList.reduce((s, r) => s + r.total, 0);
+  const totRev = calcList.reduce((s, r) => s + (r.sellTotal || 0), 0);
+  const totMargin = totRev - totCost;
+  const totMarginPct = totRev > 0 ? (totMargin / totRev) * 100 : null;
   return (
     <>
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 3 }}>
-          {["Ruolo", "N°", "€/h", "Ord", "Str ×1.25", "Fest ×1.5", "Nott ×1.15", "Costo", ""].map(h => <span key={h} style={{ fontSize: 8, color: "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
+          {["Ruolo", "N°", "€/h", "Ord", "Str ×1.25", "Fest ×1.5", "Nott ×1.15", "Costo", "Vendita €", "Margine", ""].map(h => <span key={h} style={{ fontSize: 8, color: h === "Vendita €" ? "#27ae60" : "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
         </div>
-        {calcList.map(s => (
-          <div key={s.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 2, alignItems: "center" }}>
-            <Inp value={s.role} onChange={v => updateObjList(listField, s.id, "role", v)} ph="Ruolo" />
-            <Inp type="number" value={s.count} onChange={v => updateObjList(listField, s.id, "count", v)} align="center" />
-            <Inp type="number" value={s.costHour} onChange={v => updateObjList(listField, s.id, "costHour", v)} align="center" />
-            <Inp type="number" value={s.hOrd} onChange={v => updateObjList(listField, s.id, "hOrd", v)} align="center" />
-            <Inp type="number" value={s.hStr} onChange={v => updateObjList(listField, s.id, "hStr", v)} align="center" />
-            <Inp type="number" value={s.hFest} onChange={v => updateObjList(listField, s.id, "hFest", v)} align="center" />
-            <Inp type="number" value={s.hNott} onChange={v => updateObjList(listField, s.id, "hNott", v)} align="center" />
-            <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", transition: 'color 0.3s ease' }}>€{fmt(s.total)}</div>
-            <X onClick={() => delObj(listField, s.id)} />
+        {calcList.map(s => {
+          const margin = (s.sellTotal || 0) - s.total;
+          const marginPct = (s.sellTotal || 0) > 0 ? (margin / s.sellTotal) * 100 : null;
+          const mColor = margin > 0 ? '#27ae60' : margin < 0 ? '#e74c3c' : '#999';
+          return (
+            <div key={s.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 2, alignItems: "center" }}>
+              <Inp value={s.role} onChange={v => updateObjList(listField, s.id, "role", v)} ph="Ruolo" />
+              <Inp type="number" value={s.count} onChange={v => updateObjList(listField, s.id, "count", v)} align="center" />
+              <Inp type="number" value={s.costHour} onChange={v => updateObjList(listField, s.id, "costHour", v)} align="center" />
+              <Inp type="number" value={s.hOrd} onChange={v => updateObjList(listField, s.id, "hOrd", v)} align="center" />
+              <Inp type="number" value={s.hStr} onChange={v => updateObjList(listField, s.id, "hStr", v)} align="center" />
+              <Inp type="number" value={s.hFest} onChange={v => updateObjList(listField, s.id, "hFest", v)} align="center" />
+              <Inp type="number" value={s.hNott} onChange={v => updateObjList(listField, s.id, "hNott", v)} align="center" />
+              <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", transition: 'color 0.3s ease' }}>€{fmt(s.total)}</div>
+              <div className="tr-col-sell"><Inp type="number" value={s.sellTotal || 0} onChange={v => updateObjList(listField, s.id, "sellTotal", v)} align="center" /></div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: mColor, textAlign: 'center' }}>
+                €{fmt(margin)}{marginPct !== null ? ` (${fmtD(marginPct)}%)` : ''}
+              </div>
+              <X onClick={() => delObj(listField, s.id)} />
+            </div>
+          )
+        })}
+        {calcList.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginTop: 4, paddingTop: 4, borderTop: '1px solid #eaecf0' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#1B3A5C', gridColumn: 'span 7' }}>TOTALI</span>
+            <div style={{ fontSize: 11, fontWeight: 700, textAlign: 'right' }}>€{fmt(totCost)}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', color: '#2E86AB' }}>€{fmt(totRev)}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: totMargin >= 0 ? '#27ae60' : '#e74c3c', textAlign: 'center' }}>
+              €{fmt(totMargin)}{totMarginPct !== null ? ` (${fmtD(totMarginPct)}%)` : ''}
+            </div>
+            <span />
           </div>
-        ))}
+        )}
       </div>
-      <Btn onClick={() => addObj(listField, { role: "", count: 1, costHour: 20, hOrd: 8, hStr: 0, hFest: 0, hNott: 0 })} s>+ {label}</Btn>
+      <Btn onClick={() => addObj(listField, { role: "", count: 1, costHour: 20, hOrd: 8, hStr: 0, hFest: 0, hNott: 0, sellTotal: 0 })} s>+ {label}</Btn>
     </>
   );
 };
@@ -465,13 +491,19 @@ export default function ItineraV4({ projectId, onBack }) {
     const intCalcs = d.intStaff.map(cStaff);
     const totalInt = intCalcs.reduce((s, l) => s + l.total, 0);
     const totalIntP = d.intStaff.reduce((s, l) => s + l.count, 0);
+    const totalIntRev = intCalcs.reduce((s, l) => s + (l.sellTotal || 0), 0);
     const extCalcs = d.extStaff.map(cStaff);
     const totalExt = extCalcs.reduce((s, l) => s + l.total, 0);
     const totalExtP = d.extStaff.reduce((s, l) => s + l.count, 0);
+    const totalExtRev = extCalcs.reduce((s, l) => s + (l.sellTotal || 0), 0);
 
     const totalWh = d.whCount * d.whRate * (d.whHLoad + d.whHUnload);
+    const whSellTotal = d.whSellTotal || 0;
     const totalAllStaff = totalWh + totalInt + totalExt;
     const totalAllPeople = d.whCount + totalIntP + totalExtP;
+    const totalStaffRevenue = totalIntRev + totalExtRev + whSellTotal;
+    const totalStaffMargin = totalStaffRevenue - totalAllStaff;
+    const totalStaffMarginPct = totalStaffRevenue > 0 ? (totalStaffMargin / totalStaffRevenue) * 100 : null;
 
     // Misc costs
     const totalPlanCost = d.planHours * d.planRate;
@@ -510,7 +542,7 @@ export default function ItineraV4({ projectId, onBack }) {
       discAmt, revenueNet, margin, marginPct, markupPct, marginColor, marginPerDay,
       eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalEqRevenue, totalEqMargin, totalDepreciation, recVeh, weightOverVol, catStats,
       legCalcs, totalTransport, totalTransportRevenue, totalTransportMargin, totalTransportMarginPct, fleetCapVol, fleetCapKg, volOverflow, weightOverflow,
-      intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
+      intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople, totalStaffRevenue, totalStaffMargin, totalStaffMarginPct, whSellTotal,
       totalPlanCost, crewMeals, totalAccom, totalAn, totalDmg, totalMisc, totalPhHours,
       costMaterial, costsBeforeContingency, contingencyAmt, totalCosts, financialCost, totalCostsAll
     };
@@ -1395,20 +1427,59 @@ export default function ItineraV4({ projectId, onBack }) {
           </div>
 
           <div id="section-staff">
-            {/* ═══ STAFF ═══ */}
-            <Card title={`Personale | ${calc.totalAllPeople}p | €${fmt(calc.totalAllStaff)}`} icon="👔" open={isO("st")} onToggle={() => tgl("st")}>
+            {/* ═══ SMART STAFF MODULE ═══ */}
+            <Card title={`Personale | ${calc.totalAllPeople}p | Costo €${fmt(calc.totalAllStaff)} | Ricavo €${fmt(calc.totalStaffRevenue)}`} icon="👔" open={isO("st")} onToggle={() => tgl("st")}>
+              {/* Staff Analytics Dashboard */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                {[
+                  { label: "Costo Staff", value: `€${fmt(calc.totalAllStaff)}`, color: "#e74c3c" },
+                  { label: "Ricavo Staff", value: `€${fmt(calc.totalStaffRevenue)}`, color: "#2E86AB" },
+                  { label: "Margine Lordo", value: calc.totalStaffMarginPct !== null ? `${fmtD(calc.totalStaffMarginPct)}%` : 'N/A', color: calc.totalStaffMargin >= 0 ? '#27ae60' : '#e74c3c' },
+                  { label: "Incidenza su Costi", value: calc.totalCostsAll > 0 ? `${fmtD(calc.totalAllStaff / calc.totalCostsAll * 100)}%` : '0%', color: "#e67e22" },
+                ].map((c, i) => (
+                  <div key={i} style={{ flex: 1, minWidth: 120, background: '#f8f9fb', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid #eaecf0' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
+                    <div style={{ fontSize: 9, color: '#888', marginTop: 2 }}>{c.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Warehouse */}
               <div style={{ background: "#f8f9fb", padding: 8, borderRadius: 6, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Magazzino — {d.whCount}p | €{fmt(calc.totalWh)}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Magazzino — {d.whCount}p | Costo €{fmt(calc.totalWh)} | Ricavo €{fmt(calc.whSellTotal)}</div>
                 <R>
                   <F label="N° magazzinieri" value={d.whCount} onChange={v => updateF("whCount", v)} min={1} />
                   <F label="€/ora" value={d.whRate} onChange={v => updateF("whRate", v)} />
                   <F label="Ore carico" value={d.whHLoad} onChange={v => updateF("whHLoad", v)} />
                   <F label="Ore scarico" value={d.whHUnload} onChange={v => updateF("whHUnload", v)} />
                 </R>
+                <R>
+                  <div style={{ flex: 1, minWidth: 60 }}>
+                    <label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 1 }}>Costo Totale €</label>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#555', padding: '4px 8px', background: '#fff', borderRadius: 4, border: '1px solid #e2e8f0' }}>€{fmt(calc.totalWh)}</div>
+                  </div>
+                  <div className="tr-col-sell"><F label="Vendita al Cliente €" value={d.whSellTotal || 0} onChange={v => updateF("whSellTotal", v)} /></div>
+                  <div style={{ flex: 0.6, minWidth: 60 }}>
+                    <label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 1 }}>Margine</label>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: (d.whSellTotal || 0) - calc.totalWh >= 0 ? '#27ae60' : '#e74c3c', padding: '4px 8px' }}>
+                      €{fmt((d.whSellTotal || 0) - calc.totalWh)}
+                    </div>
+                  </div>
+                </R>
               </div>
+
               <StaffTable listField="intStaff" calcList={calc.intCalcs} label="Interno" isMobile={isMobile} updateObjList={updateObjList} delObj={delObj} addObj={addObj} />
               <div style={{ margin: "16px 0", borderTop: "1px solid #eaecf0" }} />
               <StaffTable listField="extStaff" calcList={calc.extCalcs} label="Esterno / Facchini" isMobile={isMobile} updateObjList={updateObjList} delObj={delObj} addObj={addObj} />
+
+              {/* Staff Global Margin Footer */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 8, paddingRight: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: calc.totalStaffMargin >= 0 ? '#27ae60' : '#e74c3c' }}>
+                  Margine Tot Staff: €{fmt(calc.totalStaffMargin)}
+                  {calc.totalStaffMarginPct !== null ? ` (${fmtD(calc.totalStaffMarginPct)}%)` : ''}
+                  {calc.totalAllStaff > 0 ? ` | Ricarico: ${fmtD((calc.totalStaffRevenue - calc.totalAllStaff) / calc.totalAllStaff * 100)}%` : ''}
+                </span>
+              </div>
             </Card>
 
           </div>
