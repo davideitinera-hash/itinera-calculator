@@ -24,11 +24,11 @@ const ROUTES = {
   "Personalizzato": { km: 0, tolls: 0 },
 };
 const RK = Object.keys(ROUTES);
-const VEH = [
-  { name: "Furgone ≤3.5t", cons: 12, vol: 23, payload: 1200 },
-  { name: "Motrice 7.5t", cons: 18, vol: 35, payload: 3500 },
-  { name: "Motrice 18t", cons: 25, vol: 52, payload: 8500 },
-  { name: "Bilico", cons: 32, vol: 90, payload: 24000 },
+const VEHICLE_TYPES = [
+  { name: "Furgone Standard", cons: 10, vol: 10, payload: 1400 },
+  { name: "Furgone Maxi (Passo Lungo)", cons: 12, vol: 15, payload: 1400 },
+  { name: "Motrice Piccola (2 Assi)", cons: 18, vol: 35, payload: 8000 },
+  { name: "Bilico (Autoarticolato)", cons: 32, vol: 80, payload: 24000 },
   { name: "Auto/Pick-up", cons: 8, vol: 3, payload: 500 },
 ];
 const OT_MULT = { ordinario: 1.00, straordinario: 1.25, festivo: 1.50, notturno: 1.15 };
@@ -391,7 +391,7 @@ export default function ItineraV4({ projectId, onBack }) {
   // Dynamic config from Supabase (with hardcoded fallback) — memoized to avoid useMemo deps issues
   const ROUTES_DYN = useMemo(() => appConfig?.routes?.items ? Object.fromEntries(appConfig.routes.items.map(r => [r.name, { km: r.km, tolls: r.tolls }])) : ROUTES, [appConfig]);
   const RK_DYN = useMemo(() => Object.keys(ROUTES_DYN), [ROUTES_DYN]);
-  const VEH_DYN = useMemo(() => appConfig?.vehicles?.items || VEH, [appConfig]);
+  const VEH_DYN = useMemo(() => appConfig?.vehicles?.items || VEHICLE_TYPES, [appConfig]);
   const OT_MULT_DYN = useMemo(() => appConfig?.overtime || OT_MULT, [appConfig]);
   const DIESEL_DYN = useMemo(() => appConfig?.fuel?.dieselPricePerLiter || DIESEL, [appConfig]);
 
@@ -440,12 +440,25 @@ export default function ItineraV4({ projectId, onBack }) {
       const rd = ROUTES_DYN[leg.route] || { km: leg.cKm, tolls: leg.cTolls };
       const km = leg.route === "Personalizzato" ? leg.cKm : rd.km;
       const tolls = leg.route === "Personalizzato" ? leg.cTolls : rd.tolls;
-      const fuel = (km * 2 * VEH_DYN[leg.vType].cons / 100) * DIESEL_DYN * leg.nVeh;
+      const veh = VEH_DYN[leg.vType] || VEH_DYN[0];
+      const fuel = (km * 2 * veh.cons / 100) * DIESEL_DYN * leg.nVeh;
       const toll = tolls * 2 * leg.nVeh;
       const rQ = (leg.shared > 0 ? (leg.rentalDay * leg.rentalDays) / leg.shared : leg.rentalDay * leg.rentalDays) * leg.nVeh;
-      return { ...leg, km, fuel, toll, rQ, total: fuel + toll + rQ, vName: VEH_DYN[leg.vType].name };
+      const total = fuel + toll + rQ;
+      const sellPrice = leg.sellPrice || 0;
+      const legMargin = sellPrice - total;
+      const legMarginPct = sellPrice > 0 ? (legMargin / sellPrice) * 100 : null;
+      return { ...leg, km, fuel, toll, rQ, total, sellPrice, legMargin, legMarginPct, vName: veh.name, vVol: veh.vol, vPayload: veh.payload };
     });
     const totalTransport = legCalcs.reduce((s, l) => s + l.total, 0);
+    const totalTransportRevenue = legCalcs.reduce((s, l) => s + l.sellPrice, 0);
+    const totalTransportMargin = totalTransportRevenue - totalTransport;
+    const totalTransportMarginPct = totalTransportRevenue > 0 ? (totalTransportMargin / totalTransportRevenue) * 100 : null;
+    // Fleet capacity vs material
+    const fleetCapVol = legCalcs.reduce((s, l) => s + (l.vVol * l.nVeh), 0);
+    const fleetCapKg = legCalcs.reduce((s, l) => s + (l.vPayload * l.nVeh), 0);
+    const volOverflow = totalVolEff > 0 && fleetCapVol > 0 && totalVolEff > fleetCapVol;
+    const weightOverflow = totalWeight > 0 && fleetCapKg > 0 && totalWeight > fleetCapKg;
 
     // Staff
     const cStaff = s => ({ ...s, total: s.count * s.costHour * (s.hOrd * OT_MULT_DYN.ordinario + s.hStr * OT_MULT_DYN.straordinario + s.hFest * OT_MULT_DYN.festivo + s.hNott * OT_MULT_DYN.notturno), totalHours: s.hOrd + s.hStr + s.hFest + s.hNott });
@@ -496,7 +509,8 @@ export default function ItineraV4({ projectId, onBack }) {
     return {
       discAmt, revenueNet, margin, marginPct, markupPct, marginColor, marginPerDay,
       eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalEqRevenue, totalEqMargin, totalDepreciation, recVeh, weightOverVol, catStats,
-      legCalcs, totalTransport, intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
+      legCalcs, totalTransport, totalTransportRevenue, totalTransportMargin, totalTransportMarginPct, fleetCapVol, fleetCapKg, volOverflow, weightOverflow,
+      intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
       totalPlanCost, crewMeals, totalAccom, totalAn, totalDmg, totalMisc, totalPhHours,
       costMaterial, costsBeforeContingency, contingencyAmt, totalCosts, financialCost, totalCostsAll
     };
@@ -1286,32 +1300,96 @@ export default function ItineraV4({ projectId, onBack }) {
           </div>
 
           <div id="section-trasporto">
-            {/* ═══ TRANSPORT ═══ */}
-            <Card title={`Trasporto — ${d.legs.length} tratte | €${fmt(calc.totalTransport)}`} icon="🚛" open={isO("tr")} onToggle={() => tgl("tr")}>
-              {calc.legCalcs.map((leg, i) => (
-                <div key={leg.id} {...getDragPropsLegs(i)} style={{ ...getDragPropsLegs(i).style, background: i % 2 === 0 ? "#f8f9fb" : "#fff", borderRadius: 6, padding: "8px 10px", marginBottom: 6, border: "1px solid #eaecf0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 700, fontSize: 11, color: "#1B3A5C" }}><span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span> Tratta {i + 1}</span>
-                    {d.legs.length > 1 && <X onClick={() => delObj("legs", leg.id)} />}
+            {/* ═══ SMART TRANSPORT MODULE ═══ */}
+            <Card title={`Trasporto — ${d.legs.length} tratte | Costo €${fmt(calc.totalTransport)} | Ricavo €${fmt(calc.totalTransportRevenue)}`} icon="🚛" open={isO("tr")} onToggle={() => tgl("tr")}>
+              {/* Transport Analytics Dashboard */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                {[
+                  { label: "Costo Trasporti", value: `€${fmt(calc.totalTransport)}`, color: "#e74c3c" },
+                  { label: "Ricavo Trasporti", value: `€${fmt(calc.totalTransportRevenue)}`, color: "#2E86AB" },
+                  { label: "Margine Lordo", value: calc.totalTransportMarginPct !== null ? `${fmtD(calc.totalTransportMarginPct)}%` : 'N/A', color: calc.totalTransportMargin >= 0 ? '#27ae60' : '#e74c3c' },
+                  { label: "Incidenza su Costi", value: calc.totalCostsAll > 0 ? `${fmtD(calc.totalTransport / calc.totalCostsAll * 100)}%` : '0%', color: "#e67e22" },
+                ].map((c, i) => (
+                  <div key={i} style={{ flex: 1, minWidth: 120, background: '#f8f9fb', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid #eaecf0' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
+                    <div style={{ fontSize: 9, color: '#888', marginTop: 2 }}>{c.label}</div>
                   </div>
-                  <R>
-                    <F label="Descrizione" value={leg.desc} onChange={v => updateObjList("legs", leg.id, "desc", v)} type="text" w="1.5" />
-                    <Sel label="Tratta" value={leg.route} onChange={v => updateObjList("legs", leg.id, "route", v)} options={RK_DYN} w="1.5" />
-                  </R>
-                  {leg.route === "Personalizzato" && <R><F label="Km" value={leg.cKm} onChange={v => updateObjList("legs", leg.id, "cKm", v)} /><F label="Pedaggi andata €" value={leg.cTolls} onChange={v => updateObjList("legs", leg.id, "cTolls", v)} step={0.5} /></R>}
-                  <R>
-                    <Sel label="Veicolo" value={leg.vName} onChange={v => updateObjList("legs", leg.id, "vType", VEH_DYN.findIndex(x => x.name === v))} options={VEH_DYN.map(v => v.name)} />
-                    <F label="N° veicoli" value={leg.nVeh} onChange={v => updateObjList("legs", leg.id, "nVeh", v)} min={1} w="0.4" />
-                    <F label="Nolo €/gg" value={leg.rentalDay} onChange={v => updateObjList("legs", leg.id, "rentalDay", v)} w="0.6" />
-                    <F label="GG nolo" value={leg.rentalDays} onChange={v => updateObjList("legs", leg.id, "rentalDays", v)} w="0.4" />
-                    <F label="÷ eventi" value={leg.shared} onChange={v => updateObjList("legs", leg.id, "shared", v)} min={1} w="0.4" />
-                  </R>
-                  <div style={{ fontSize: 9, color: "#666", marginTop: 2 }}>
-                    Carb €{fmt(leg.fuel)} | Ped €{fmt(leg.toll)} | Nolo €{fmt(leg.rQ)}{leg.shared > 1 ? ` (÷${leg.shared})` : ""} → <strong>€{fmt(leg.total)}</strong>
+                ))}
+              </div>
+
+              {/* Capacity Warning Banner */}
+              {d.legs.length > 0 && (
+                <div style={{
+                  marginBottom: 10, padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                  background: calc.volOverflow || calc.weightOverflow ? '#fef2f2' : '#f0fdf4',
+                  border: `1px solid ${calc.volOverflow || calc.weightOverflow ? '#fca5a5' : '#86efac'}`,
+                  color: calc.volOverflow || calc.weightOverflow ? '#991b1b' : '#166534'
+                }}>
+                  <span style={{ fontSize: 16 }}>{calc.volOverflow || calc.weightOverflow ? '⚠️' : '✅'}</span>
+                  <div>
+                    <div>📦 Materiale: <strong>{fmtD2(calc.totalVolEff)} m³</strong> / <strong>{fmt(calc.totalWeight)} kg</strong></div>
+                    <div>🚛 Flotta: <strong>{fmtD2(calc.fleetCapVol)} m³</strong> / <strong>{fmt(calc.fleetCapKg)} kg</strong></div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                    {calc.volOverflow && <div style={{ color: '#dc2626', fontWeight: 700 }}>🔴 Volume in eccesso! Serve più spazio ({fmtD2(calc.totalVolEff - calc.fleetCapVol)} m³ mancanti)</div>}
+                    {calc.weightOverflow && <div style={{ color: '#dc2626', fontWeight: 700 }}>🔴 Sovraccarico! Rischio multa/blocco ({fmt(calc.totalWeight - calc.fleetCapKg)} kg in eccesso)</div>}
+                    {!calc.volOverflow && !calc.weightOverflow && <div style={{ color: '#166534', fontWeight: 700 }}>Capacità di carico ottimale</div>}
                   </div>
                 </div>
-              ))}
-              <Btn onClick={() => addObj("legs", { desc: "", route: RK_DYN[0], cKm: 0, cTolls: 0, vType: 0, nVeh: 1, rentalDay: 150, rentalDays: 1, shared: 1 })} s>+ Tratta</Btn>
+              )}
+
+              {/* Transport Grid */}
+              <style>{`
+                .tr-col-sell input { border: 2px solid #27ae60 !important; background: #f0fff5 !important; font-weight: 700 !important; color: #1a5c2e !important; }
+              `}</style>
+              {calc.legCalcs.map((leg, i) => {
+                const mColor = leg.legMargin > 0 ? '#27ae60' : leg.legMargin < 0 ? '#e74c3c' : '#999';
+                return (
+                  <div key={leg.id} {...getDragPropsLegs(i)} style={{ ...getDragPropsLegs(i).style, background: i % 2 === 0 ? "#f8f9fb" : "#fff", borderRadius: 6, padding: "8px 10px", marginBottom: 6, border: "1px solid #eaecf0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 11, color: "#1B3A5C" }}><span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span> Tratta {i + 1}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, background: mColor + '12', color: mColor, fontWeight: 700 }}>
+                          Margine: €{fmt(leg.legMargin)} {leg.legMarginPct !== null ? `(${fmtD(leg.legMarginPct)}%)` : ''}
+                        </span>
+                        {d.legs.length > 1 && <X onClick={() => delObj("legs", leg.id)} />}
+                      </div>
+                    </div>
+                    <R>
+                      <F label="Descrizione" value={leg.desc} onChange={v => updateObjList("legs", leg.id, "desc", v)} type="text" w="1.5" />
+                      <Sel label="Tratta" value={leg.route} onChange={v => updateObjList("legs", leg.id, "route", v)} options={RK_DYN} w="1.5" />
+                    </R>
+                    {leg.route === "Personalizzato" && <R><F label="Km" value={leg.cKm} onChange={v => updateObjList("legs", leg.id, "cKm", v)} /><F label="Pedaggi andata €" value={leg.cTolls} onChange={v => updateObjList("legs", leg.id, "cTolls", v)} step={0.5} /></R>}
+                    <R>
+                      <Sel label="Veicolo" value={leg.vName} onChange={v => updateObjList("legs", leg.id, "vType", VEH_DYN.findIndex(x => x.name === v))} options={VEH_DYN.map(v => v.name)} />
+                      <F label="N° veicoli" value={leg.nVeh} onChange={v => updateObjList("legs", leg.id, "nVeh", v)} min={1} w="0.4" />
+                      <F label="Nolo €/gg" value={leg.rentalDay} onChange={v => updateObjList("legs", leg.id, "rentalDay", v)} w="0.6" />
+                      <F label="GG nolo" value={leg.rentalDays} onChange={v => updateObjList("legs", leg.id, "rentalDays", v)} w="0.4" />
+                      <F label="÷ eventi" value={leg.shared} onChange={v => updateObjList("legs", leg.id, "shared", v)} min={1} w="0.4" />
+                    </R>
+                    <R>
+                      <div style={{ flex: 1, minWidth: 60 }}>
+                        <label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 1 }}>Costo €</label>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', padding: '4px 8px', background: '#f1f5f9', borderRadius: 4, border: '1px solid #e2e8f0' }}>€{fmt(leg.total)}</div>
+                      </div>
+                      <div className="tr-col-sell"><F label="Vendita al Cliente €" value={leg.sellPrice} onChange={v => updateObjList("legs", leg.id, "sellPrice", v)} /></div>
+                    </R>
+                    <div style={{ fontSize: 9, color: "#666", marginTop: 2 }}>
+                      Carb €{fmt(leg.fuel)} | Ped €{fmt(leg.toll)} | Nolo €{fmt(leg.rQ)}{leg.shared > 1 ? ` (÷${leg.shared})` : ""} | 📦 {fmtD2(VEH_DYN[leg.vType]?.vol * leg.nVeh || 0)}m³ / {fmt(VEH_DYN[leg.vType]?.payload * leg.nVeh || 0)}kg cap.
+                    </div>
+                  </div>
+                )
+              })}
+              {calc.legCalcs.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4, marginBottom: 6, paddingRight: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: calc.totalTransportMargin >= 0 ? '#27ae60' : '#e74c3c' }}>
+                    Margine Tot Trasporti: €{fmt(calc.totalTransportMargin)}
+                    {calc.totalTransportMarginPct !== null ? ` (${fmtD(calc.totalTransportMarginPct)}%)` : ''}
+                    {calc.totalTransport > 0 ? ` | Ricarico: ${fmtD((calc.totalTransportRevenue - calc.totalTransport) / calc.totalTransport * 100)}%` : ''}
+                  </span>
+                </div>
+              )}
+              <Btn onClick={() => addObj("legs", { desc: "", route: RK_DYN[0], cKm: 0, cTolls: 0, vType: 0, nVeh: 1, rentalDay: 150, rentalDays: 1, shared: 1, sellPrice: 0 })} s>+ Tratta</Btn>
             </Card>
 
           </div>
