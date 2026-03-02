@@ -47,7 +47,7 @@ const Toggle = ({ value, onChange, label }) => (
 
 function GeneralSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   return (
     <Card title="Generali" desc="Nome azienda, colori, valuta">
@@ -68,7 +68,7 @@ function GeneralSection({ data, onSave, saving }) {
 
 function FuelSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   return (
     <Card title="Carburante" desc="Prezzo gasolio per calcolo trasporto">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -84,7 +84,7 @@ function FuelSection({ data, onSave, saving }) {
 
 function EditableListSection({ title, desc, category, data, onSave, saving, columns, newItem }) {
   const [items, setItems] = useState(data?.items || []);
-  useEffect(() => { if (data?.items) setItems(data.items); }, [data]);
+  useEffect(() => { if (data?.items) setItems(data.items); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const updateItem = (idx, field, val) => setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
   const addItem = () => setItems(prev => [...prev, { ...newItem }]);
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
@@ -126,7 +126,7 @@ function EditableListSection({ title, desc, category, data, onSave, saving, colu
 
 function OvertimeSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   return (
     <Card title="Moltiplicatori Ore" desc="Coefficienti per straordinario, festivo, notturno">
@@ -145,7 +145,7 @@ function OvertimeSection({ data, onSave, saving }) {
 
 function DefaultsSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const fields = [
     { key: 'whCount', label: 'Magazzinieri (n)' }, { key: 'whRate', label: 'Costo/ora Magazzino' },
@@ -171,11 +171,11 @@ function DefaultsSection({ data, onSave, saving }) {
 
 function StaffRolesSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || { internal: [], external: [] });
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const updateRole = (type, idx, field, val) => setForm(prev => ({ ...prev, [type]: prev[type].map((r, i) => i === idx ? { ...r, [field]: field === 'defaultRate' ? Number(val) : val } : r) }));
   const addRole = (type) => setForm(prev => ({ ...prev, [type]: [...prev[type], { role: '', defaultRate: 15 }] }));
   const removeRole = (type, idx) => setForm(prev => ({ ...prev, [type]: prev[type].filter((_, i) => i !== idx) }));
-  const RoleTable = ({ type, label }) => (
+  const renderRoleTable = (type, label) => (
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>{label}</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -188,7 +188,7 @@ function StaffRolesSection({ data, onSave, saving }) {
           <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
             <td style={{ padding: '4px 6px' }}><Input value={r.role} onChange={v => updateRole(type, idx, 'role', v)} style={{ fontSize: 12, padding: '6px 8px' }} /></td>
             <td style={{ padding: '4px 6px' }}><Input type="number" value={r.defaultRate} onChange={v => updateRole(type, idx, 'defaultRate', v)} style={{ fontSize: 12, padding: '6px 8px', width: 100 }} /></td>
-            <td style={{ padding: '4px 6px', textAlign: 'center' }}><DangerBtn onClick={() => removeRole(type, idx)}></DangerBtn></td>
+            <td style={{ padding: '4px 6px', textAlign: 'center' }}><DangerBtn onClick={() => removeRole(type, idx)}>✕</DangerBtn></td>
           </tr>
         ))}</tbody>
       </table>
@@ -197,8 +197,8 @@ function StaffRolesSection({ data, onSave, saving }) {
   );
   return (
     <Card title="Ruoli Personale" desc="Ruoli e tariffe per staff interno ed esterno">
-      <RoleTable type="internal" label="Staff Interno" />
-      <RoleTable type="external" label="Staff Esterno" />
+      {renderRoleTable('internal', 'Staff Interno')}
+      {renderRoleTable('external', 'Staff Esterno')}
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
         <Btn onClick={() => onSave('staffRoles', form)}>Salva Ruoli</Btn><SaveIndicator saving={saving} />
       </div>
@@ -214,7 +214,7 @@ function SuppliersSection({ supplierCategories }) {
   const [form, setForm] = useState({ name: '', category: 'other', contact_person: '', email: '', phone: '', website: '', address: '', vat_number: '', payment_terms: '30 giorni', rating: 3, notes: '' });
   const [search, setSearch] = useState('');
   const loadSuppliers = async () => { setLoading(true); const { data } = await supabase.from('suppliers').select('*').eq('is_active', true).order('name'); if (data) setSuppliers(data); setLoading(false); };
-  useEffect(() => { loadSuppliers(); }, []);
+  useEffect(() => { loadSuppliers(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const resetForm = () => { setForm({ name: '', category: 'other', contact_person: '', email: '', phone: '', website: '', address: '', vat_number: '', payment_terms: '30 giorni', rating: 3, notes: '' }); setEditId(null); setShowAdd(false); };
   const saveSupplier = async () => { if (!form.name) return; if (editId) { await supabase.from('suppliers').update(form).eq('id', editId); } else { await supabase.from('suppliers').insert(form); } resetForm(); loadSuppliers(); };
@@ -270,7 +270,7 @@ function SuppliersSection({ supplierCategories }) {
 
 function PricingSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || { markupRules: [], seasonalRules: [], volumeDiscounts: [], applyMarkupAuto: false, applySeasonalAuto: false, applyVolumeAuto: false });
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const updateArr = (arrKey, idx, field, val) => setForm(prev => ({ ...prev, [arrKey]: prev[arrKey].map((item, i) => i === idx ? { ...item, [field]: val } : item) }));
   const removeArr = (arrKey, idx) => setForm(prev => ({ ...prev, [arrKey]: prev[arrKey].filter((_, i) => i !== idx) }));
   return (
@@ -314,7 +314,7 @@ function CustomFieldsSection() {
   const [form, setForm] = useState({ field_name: '', field_label: '', field_type: 'text', entity_type: 'project', options: [], default_value: '', is_required: false });
   const [optionsText, setOptionsText] = useState('');
   const loadFields = async () => { setLoading(true); const { data } = await supabase.from('custom_fields').select('*').order('sort_order'); if (data) setFields(data); setLoading(false); };
-  useEffect(() => { loadFields(); }, []);
+  useEffect(() => { loadFields(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const saveField = async () => { if (!form.field_name || !form.field_label) return; const toSave = { ...form, options: form.field_type === 'select' ? optionsText.split('\n').filter(Boolean).map(o => o.trim()) : [] }; await supabase.from('custom_fields').insert(toSave); setForm({ field_name: '', field_label: '', field_type: 'text', entity_type: 'project', options: [], default_value: '', is_required: false }); setOptionsText(''); setShowAdd(false); loadFields(); };
   const deleteField = async (id) => { if (!window.confirm('Eliminare questo campo?')) return; await supabase.from('custom_fields').delete().eq('id', id); loadFields(); };
@@ -348,7 +348,7 @@ function CustomFieldsSection() {
 
 function CalculationsSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const setNested = (path, val) => { setForm(prev => { const c = JSON.parse(JSON.stringify(prev)); const k = path.split('.'); let o = c; for (let i = 0; i < k.length - 1; i++) { if (!o[k[i]]) o[k[i]] = {}; o = o[k[i]]; } o[k[k.length - 1]] = val; return c; }); };
   return (
     <Card title="Formule e Calcoli" desc="Personalizza ammortamenti, overhead, contingency">
@@ -383,7 +383,7 @@ function CalculationsSection({ data, onSave, saving }) {
 
 function AlertsSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || { rules: [] });
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const updateRule = (idx, field, val) => setForm(prev => ({ ...prev, rules: prev.rules.map((r, i) => i === idx ? { ...r, [field]: val } : r) }));
   const addRule = () => setForm(prev => ({ ...prev, rules: [...prev.rules, { id: 'new_' + Date.now(), label: '', condition: 'marginPct', operator: '<', value: 0, severity: 'warning', message: '', enabled: true }] }));
   const removeRule = (idx) => setForm(prev => ({ ...prev, rules: prev.rules.filter((_, i) => i !== idx) }));
@@ -409,7 +409,7 @@ function AlertsSection({ data, onSave, saving }) {
 
 function TaxSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const setNested = (path, val) => { setForm(prev => { const c = JSON.parse(JSON.stringify(prev)); const k = path.split('.'); let o = c; for (let i = 0; i < k.length - 1; i++) { if (!o[k[i]]) o[k[i]] = {}; o = o[k[i]]; } o[k[k.length - 1]] = val; return c; }); };
   const updateVat = (idx, field, val) => setForm(prev => ({ ...prev, vatRates: prev.vatRates.map((r, i) => i === idx ? { ...r, [field]: val } : r) }));
   return (
@@ -434,7 +434,7 @@ function TaxSection({ data, onSave, saving }) {
 
 function BrandingSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   return (
     <Card title="Branding / Dati Azienda" desc="Logo, dati fiscali, template PDF">
@@ -476,7 +476,7 @@ function BrandingSection({ data, onSave, saving }) {
 
 function UnitsSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   return (
     <Card title="Unita di Misura e Formati" desc="Sistema metrico, formato numeri, data, valuta">
@@ -498,7 +498,7 @@ function AuditLogSection() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const loadLogs = async () => { setLoading(true); const { data } = await supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(100); if (data) setLogs(data); setLoading(false); };
-  useEffect(() => { loadLogs(); }, []);
+  useEffect(() => { loadLogs(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
   return (
     <Card title="Audit Log" desc="Registro modifiche (ultime 100)">
       <Btn onClick={loadLogs} small>Aggiorna</Btn>
@@ -594,7 +594,7 @@ const SECTIONS = [
 export default function SettingsPage({ onBack }) {
   const { profile } = useAuth();
   const { config, loading, saving, saveCategory } = useAppConfig();
-  const { isMobile, isTablet, isTouch } = useResponsive();
+  const { isMobile, isTablet } = useResponsive();
   const [activeSection, setActiveSection] = useState('general');
   const [saveMsg, setSaveMsg] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);

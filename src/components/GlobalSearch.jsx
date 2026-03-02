@@ -10,7 +10,7 @@ export default function GlobalSearch({ onSelectProject, onClose }) {
     useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
 
     useEffect(() => {
-        if (query.length < 2) { setResults([]); return; }
+        if (query.length < 2) { setResults([]); return; } // eslint-disable-line react-hooks/set-state-in-effect
         const timeout = setTimeout(async () => {
             setLoading(true);
             const { data } = await supabase.from('projects').select('id, project_name, client_name, event_type, status, revenue_gross, event_date').or('project_name.ilike.%' + query + '%,client_name.ilike.%' + query + '%').order('updated_at', { ascending: false }).limit(10);

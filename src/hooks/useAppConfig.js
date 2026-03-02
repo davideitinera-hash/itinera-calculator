@@ -17,7 +17,7 @@ export function useAppConfig() {
         setLoading(false);
     }, []);
 
-    useEffect(() => { loadConfig(); }, [loadConfig]);
+    useEffect(() => { loadConfig(); }, [loadConfig]); // eslint-disable-line react-hooks/set-state-in-effect
 
     const saveCategory = useCallback(async (category, newConfig) => {
         setSaving(true);

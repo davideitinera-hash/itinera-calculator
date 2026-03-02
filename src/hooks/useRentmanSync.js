@@ -53,7 +53,7 @@ export function useRentmanSync() {
 
     const mapToCalculator = useCallback((rentmanData) => {
         if (!rentmanData) return null;
-        const { project, equipment, costs, rentmanTotals } = rentmanData;
+        const { project, equipment, costs, rentmanTotals, subrentals: rawSubrentals } = rentmanData;
 
         const projectFields = {};
         if (project) {
@@ -65,26 +65,66 @@ export function useRentmanSync() {
             if (project.projectNumber != null) projectFields.projectCode = String(project.projectNumber);
         }
 
-        const equipmentItems = (equipment || []).map(e => ({
-            desc: e.desc || '',
-            supplier: e.supplier || e.contactName || e.contact?.displayname || '',
-            qty: e.qty || 1,
-            coefficient: 1,
-            l: Math.round(((e.l || 0) / 100) * 100) / 100,
-            w: Math.round(((e.w || 0) / 100) * 100) / 100,
-            h: Math.round(((e.h || 0) / 100) * 100) / 100,
-            weightKg: e.weightKg || 0,
-            costUnit: e.costUnit || 0,
-            owned: false,
-            purchasePrice: 0,
-            totalUses: 1,
-            usesUsed: 0,
-            _rentmanId: e.rentmanId,
-            _group: e.group || '',
-            _remarks: e.remarks || '',
-        }));
+        const equipmentItems = (equipment || []).map((e, i) => {
+            if (i === 0) console.log('First Rentman item:', JSON.stringify(e, null, 2));
+            return {
+                desc: e.desc || '',
+                supplier: e.custom?.custom_14 || e.supplier || e.contactName || e.contact?.displayname || '',
+                qty: e.qty || 1,
+                coefficient: (e.factor && e.factor !== 0) ? String(e.factor) : '1',
+                l: Math.round(((e.l || 0) / 100) * 100) / 100,
+                w: Math.round(((e.w || 0) / 100) * 100) / 100,
+                h: Math.round(((e.h || 0) / 100) * 100) / 100,
+                weightKg: e.weightKg || 0,
+                costUnit: e.costUnit || 0,
+                owned: false,
+                purchasePrice: 0,
+                totalUses: 1,
+                usesUsed: 0,
+                rentmanId: e.rentmanId,
+                _group: e.group || '',
+                _remarks: e.remarks || '',
+            };
+        });
 
+        // ═══ SUBRENTALS: flatten equipment lines from the new subrentals array ═══
         const subRentals = [];
+        if (Array.isArray(rawSubrentals) && rawSubrentals.length > 0) {
+            // New format: top-level subrentals array with nested equipment
+            for (const sr of rawSubrentals) {
+                const supplierName = sr.supplierName || '';
+                const eqLines = sr.equipment || [];
+                if (eqLines.length > 0) {
+                    for (const eq of eqLines) {
+                        subRentals.push({
+                            desc: eq.name || '',
+                            cost: eq.lineprice || 0,
+                            supplier: supplierName,
+                            qty: eq.quantity || 1,
+                            unitPrice: eq.unit_price || 0,
+                            vatIncl: false,
+                            rentmanId: eq.id || null,
+                            _subrentalId: sr.id || null,
+                        });
+                    }
+                } else {
+                    // Subrental with no equipment lines — use aggregate cost
+                    subRentals.push({
+                        desc: supplierName ? `Subaffitto ${supplierName}` : 'Subaffitto',
+                        cost: sr.equipment_cost || 0,
+                        supplier: supplierName,
+                        qty: 1,
+                        unitPrice: sr.equipment_cost || 0,
+                        vatIncl: false,
+                        rentmanId: sr.id || null,
+                        _subrentalId: sr.id || null,
+                    });
+                }
+            }
+            console.log('[RentmanSync] Subrentals from new format:', subRentals.length, 'lines');
+        }
+
+        // ═══ COSTS: purchases and misc (+ legacy sub_rental fallback) ═══
         const purchases = [];
         const miscCosts = [];
 
@@ -92,20 +132,24 @@ export function useRentmanSync() {
             const item = {
                 desc: c.desc || '',
                 cost: c.cost || 0,
-                supplier: '',
+                supplier: c.supplier || '',
+                qty: c.quantity || 1,
                 vatIncl: false,
-                _rentmanId: c.rentmanId,
+                rentmanId: c.rentmanId,
                 _remark: c.remark || '',
             };
             switch (c.category) {
                 case 'sub_rental':
-                    subRentals.push(item);
+                    // Only use legacy sub_rental costs if no top-level subrentals data
+                    if (!rawSubrentals || rawSubrentals.length === 0) {
+                        subRentals.push(item);
+                    }
                     break;
                 case 'purchase':
                     purchases.push(item);
                     break;
                 default:
-                    miscCosts.push({ desc: c.desc || '', cost: c.cost || 0, _rentmanId: c.rentmanId });
+                    miscCosts.push({ desc: c.desc || '', cost: c.cost || 0, qty: c.quantity || 1, supplier: c.supplier || '', rentmanId: c.rentmanId });
                     break;
             }
         });

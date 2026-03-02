@@ -20,7 +20,7 @@ const EVENT_ICONS = { Wedding: '💒', Corporate: '🏢', Fiera: '🎪', Festiva
 
 export default function ProjectsList({ onSelectProject, onOpenSettings }) {
     const { user, profile, signOut, isAdmin } = useAuth();
-    const { isMobile, isTablet, isTouch } = useResponsive();
+    const { isMobile, isTablet } = useResponsive();
     const toast = useToast();
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -38,7 +38,7 @@ export default function ProjectsList({ onSelectProject, onOpenSettings }) {
         setLoading(false);
     };
 
-    useEffect(() => { loadProjects(); }, []);
+    useEffect(() => { loadProjects(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
     useEffect(() => {
         const handleKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowGlobalSearch(true); } if (e.key === 'Escape') setShowGlobalSearch(false); };
         window.addEventListener('keydown', handleKey);
@@ -56,7 +56,7 @@ export default function ProjectsList({ onSelectProject, onOpenSettings }) {
         if (!window.confirm('Duplicare questo progetto?')) return;
         const { data: orig } = await supabase.from('projects').select('*').eq('id', projId).single();
         if (!orig) return;
-        const { id, created_at, updated_at, ...projData } = orig;
+        const { id: _id, created_at: _ca, updated_at: _ua, ...projData } = orig;
         const { data: newProj } = await supabase.from('projects').insert({ ...projData, owner_id: user.id, project_name: orig.project_name + ' (copia)', status: 'draft' }).select().single();
         if (!newProj) return;
         for (const tbl of ['equipment_items', 'transport_legs', 'staff_entries', 'cost_entries', 'production_phases']) {

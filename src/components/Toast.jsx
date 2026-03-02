@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 
 const ToastContext = createContext(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast() { return useContext(ToastContext); }
 
 function ToastItem({ toast, onRemove }) {
@@ -24,7 +25,7 @@ export function ToastProvider({ children }) {
         setToasts(prev => [...prev, { id, message, type, duration }]);
     }, []);
     const removeToast = useCallback((id) => { setToasts(prev => prev.filter(t => t.id !== id)); }, []);
-    const toast = { success: (msg) => addToast(msg, 'success'), error: (msg) => addToast(msg, 'error'), warning: (msg) => addToast(msg, 'warning'), info: (msg) => addToast(msg, 'info') };
+    const toast = { success: (msg, dur) => addToast(msg, 'success', dur), error: (msg, dur) => addToast(msg, 'error', dur), warning: (msg, dur) => addToast(msg, 'warning', dur), info: (msg, dur) => addToast(msg, 'info', dur) };
     return (
         <ToastContext.Provider value={toast}>
             {children}

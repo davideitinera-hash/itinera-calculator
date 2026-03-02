@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useSupabaseProject } from './hooks/useSupabaseProject';
 import { useAppConfig } from './hooks/useAppConfig';
 import { supabase } from './lib/supabaseClient';
@@ -7,6 +7,9 @@ import { useDragDrop } from './hooks/useDragDrop';
 import Breadcrumb from './components/Breadcrumb';
 import ExportPDFButton from './components/ExportPDF';
 import RentmanImportModal from './components/RentmanImportModal';
+import SyncHistoryModal from './components/SyncHistoryModal';
+import SyncDiffModal from './components/SyncDiffModal';
+import { useToast } from './components/Toast';
 
 // ═══ CONFIG ═══
 const DIESEL = 1.666;
@@ -68,13 +71,38 @@ const Card = ({ title, icon, children, accent, open, onToggle, right }) => (
   </div>
 );
 const R = ({ children, gap }) => <div className="no-print" style={{ display: "flex", gap: gap || 6, marginBottom: 5, flexWrap: "wrap", alignItems: "end" }}>{children}</div>;
-const F = ({ label, value, onChange, type = "number", min, step = 1, w, ph, disabled }) => (
-  <div style={{ flex: w || 1, minWidth: 60 }}>
-    {label && <label style={{ fontSize: 9, color: "#888", display: "block", marginBottom: 1 }}>{label}</label>}
-    <input type={type} value={value} onChange={e => onChange(type === "number" ? parseFloat(e.target.value) || 0 : e.target.value)} min={min} step={step} placeholder={ph} disabled={disabled}
-      style={{ width: "100%", padding: "4px 6px", border: "1px solid #d0d7de", borderRadius: 4, fontSize: 11, background: disabled ? "#f5f5f5" : "#fff", boxSizing: "border-box" }} />
-  </div>
-);
+const F = ({ label, value, onChange, type = "number", min, step = 1, w, ph, disabled, vr }) => {
+  const [err, setErr] = useState(null);
+  const [shaking, setShaking] = useState(false);
+  const [local, setLocal] = useState(null);
+  const prevRef = useRef(value);
+  const timerRef = useRef(null);
+  const editing = local !== null;
+  const displayed = editing ? local : value;
+  const handleFocus = (e) => { setLocal(String(value)); prevRef.current = value; if (type === 'number') e.target.select(); };
+  const handleChange = (e) => { clearTimeout(timerRef.current); setErr(null); if (type === 'text') { onChange(e.target.value); } else { setLocal(e.target.value); } };
+  const handleBlur = (e) => {
+    const raw = type === 'text' ? e.target.value : local;
+    setLocal(null);
+    if (type === 'text') { const t = raw.trim().slice(0, 200); if (t !== value) onChange(t); return; }
+    const num = parseFloat(raw);
+    const rule = vr || { min: min != null ? min : 0, max: 999999 };
+    if (raw === '' || isNaN(num) || num < rule.min || num > rule.max) {
+      setErr(`Non valido (${rule.min}-${rule.max})`); setShaking(true); setTimeout(() => setShaking(false), 500);
+      clearTimeout(timerRef.current); timerRef.current = setTimeout(() => { setErr(null); }, 2000);
+      onChange(prevRef.current); return;
+    }
+    prevRef.current = num; setErr(null); onChange(num);
+  };
+  return (
+    <div style={{ flex: w || 1, minWidth: 60, position: 'relative' }}>
+      {label && <label style={{ fontSize: 9, color: "#888", display: "block", marginBottom: 1 }}>{label}</label>}
+      <input type={type === 'number' && editing ? 'text' : type} value={displayed} onChange={handleChange} onFocus={handleFocus} onBlur={handleBlur} min={min} step={step} placeholder={ph} disabled={disabled} inputMode={type === 'number' ? 'decimal' : undefined}
+        className={shaking ? 'inp-shake' : ''} style={{ width: "100%", padding: "4px 6px", border: `1px solid ${err ? '#ef4444' : '#d0d7de'}`, borderRadius: 4, fontSize: 11, background: disabled ? "#f5f5f5" : "#fff", boxSizing: "border-box", transition: 'border-color 0.2s' }} />
+      {err && <div style={{ position: 'absolute', left: 0, top: '100%', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 9, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap', zIndex: 10, marginTop: 1 }}>{err}</div>}
+    </div>
+  );
+};
 const Sel = ({ label, value, onChange, options, w }) => (
   <div style={{ flex: w || 1, minWidth: 80 }}>
     {label && <label style={{ fontSize: 9, color: "#888", display: "block", marginBottom: 1 }}>{label}</label>}
@@ -108,10 +136,37 @@ const Btn = ({ children, onClick, color = "#2E86AB", s, disabled, title, classNa
 );
 const Sub = ({ text }) => <div style={{ fontSize: 10, color: "#666", background: "#f8f9fb", borderRadius: 5, padding: "5px 8px", marginTop: 5, lineHeight: 1.5 }}>{text}</div>;
 const X = ({ onClick }) => <button onClick={onClick} style={{ background: "none", border: "none", cursor: "pointer", color: "#e74c3c", fontSize: 13, padding: "1px 3px" }}>✕</button>;
-const Inp = ({ value, onChange, type = "text", ph, align, w }) => (
-  <input type={type} value={value} onChange={e => onChange(type === "number" ? parseFloat(e.target.value) || 0 : e.target.value)} placeholder={ph}
-    style={{ padding: "3px 5px", border: "1px solid #d0d7de", borderRadius: 4, fontSize: 11, textAlign: align || "left", width: w || "100%", boxSizing: "border-box" }} />
-);
+const Inp = ({ value, onChange, type = "text", ph, align, w, vr }) => {
+  const [err, setErr] = useState(null);
+  const [shaking, setShaking] = useState(false);
+  const [local, setLocal] = useState(null);
+  const prevRef = useRef(value);
+  const timerRef = useRef(null);
+  const editing = local !== null;
+  const displayed = editing ? local : value;
+  const handleFocus = (e) => { setLocal(String(value)); prevRef.current = value; if (type === 'number') e.target.select(); };
+  const handleChange = (e) => { clearTimeout(timerRef.current); setErr(null); if (type === 'text') { onChange(e.target.value); } else { setLocal(e.target.value); } };
+  const handleBlur = () => {
+    const raw = type === 'text' ? undefined : local;
+    setLocal(null);
+    if (type === 'text') { const t = String(value).trim().slice(0, 200); if (t !== value) onChange(t); return; }
+    const num = parseFloat(raw);
+    const rule = vr || { min: 0, max: 999999 };
+    if (raw === '' || isNaN(num) || num < rule.min || num > rule.max) {
+      setErr(`Non valido (${rule.min}-${rule.max})`); setShaking(true); setTimeout(() => setShaking(false), 500);
+      clearTimeout(timerRef.current); timerRef.current = setTimeout(() => { setErr(null); }, 2000);
+      onChange(prevRef.current); return;
+    }
+    prevRef.current = num; setErr(null); onChange(num);
+  };
+  return (
+    <div style={{ position: 'relative' }}>
+      <input type={type === 'number' && editing ? 'text' : type} value={displayed} onChange={handleChange} onFocus={handleFocus} onBlur={handleBlur} placeholder={ph} inputMode={type === 'number' ? 'decimal' : undefined}
+        className={shaking ? 'inp-shake' : ''} style={{ padding: "3px 5px", border: `1px solid ${err ? '#ef4444' : '#d0d7de'}`, borderRadius: 4, fontSize: 11, textAlign: align || "left", width: w || "100%", boxSizing: "border-box", transition: 'border-color 0.2s' }} />
+      {err && <div style={{ position: 'absolute', left: 0, top: '100%', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 9, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap', zIndex: 10, marginTop: 1 }}>{err}</div>}
+    </div>
+  );
+};
 const Warn = ({ text, color = "#e74c3c" }) => <div style={{ background: color + "15", border: `1px solid ${color}`, borderRadius: 6, padding: "5px 8px", fontSize: 10, color, marginTop: 5 }}>{text}</div>;
 const Info = ({ text }) => <div style={{ fontSize: 9, color: "#aaa", marginTop: 3 }}>{text}</div>;
 
@@ -125,6 +180,8 @@ const GlobalStyles = () => (
       .hero-dashboard { border: none !important; margin: 0 !important; padding: 0 !important; }
       * { box-shadow: none !important; }
     }
+    @keyframes inp-shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-3px)} 40%{transform:translateX(3px)} 60%{transform:translateX(-2px)} 80%{transform:translateX(2px)} }
+    .inp-shake { animation: inp-shake 0.4s ease; }
   `}</style>
 );
 
@@ -189,13 +246,47 @@ export default function ItineraV4({ projectId, onBack }) {
   const isO = k => sec[k] !== false;
 
   // Global consolidated state (Supabase)
-  const { data: d, loading, updateField, addItem, updateItem, deleteItem, reorderItems } = useSupabaseProject(projectId);
+  const { data: d, loading, updateField, addItem, updateItem, deleteItem, reorderItems, updateProjectMeta, reload } = useSupabaseProject(projectId);
   const { config: appConfig } = useAppConfig();
   const { isMobile } = useResponsive();
+  const toast = useToast();
 
   const [suppliersList, setSuppliersList] = useState([]);
   const [activeNav, setActiveNav] = useState('progetto');
   const [showRentmanModal, setShowRentmanModal] = useState(false);
+  const [showSyncHistory, setShowSyncHistory] = useState(false);
+  const [pendingSync, setPendingSync] = useState(null);
+  const [pendingNotifCount, setPendingNotifCount] = useState(0);
+  const pollingRef = useRef(null);
+
+  // ═══ RENTMAN NOTIFICATION POLLING ═══
+  useEffect(() => {
+    const rpId = d?.rentmanProjectId;
+    if (!rpId) { setPendingNotifCount(0); return; }
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from('pending_sync_notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('rentman_project_id', rpId)
+        .eq('acknowledged', false);
+      setPendingNotifCount(count || 0);
+    };
+    fetchCount();
+    pollingRef.current = setInterval(fetchCount, 30000);
+    return () => clearInterval(pollingRef.current);
+  }, [d?.rentmanProjectId]);
+
+  const acknowledgeNotifications = async () => {
+    const rpId = d?.rentmanProjectId;
+    if (!rpId) return;
+    await supabase
+      .from('pending_sync_notifications')
+      .update({ acknowledged: true })
+      .eq('rentman_project_id', rpId)
+      .eq('acknowledged', false);
+    setPendingNotifCount(0);
+  };
+
   const scrollToSection = (id) => {
     const el = document.getElementById('section-' + id);
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActiveNav(id); }
@@ -239,23 +330,38 @@ export default function ItineraV4({ projectId, onBack }) {
       const weight = e.qty * e.weightKg;
       const coeff = e.coefficient ?? 1;
       const cost = e.qty * e.costUnit * coeff;
+      const revenue = e.qty * (e.sellPrice || 0) * coeff;
+      const marginEur = revenue - cost;
+      const marginPct = revenue > 0 ? (revenue - cost) / revenue * 100 : null;
+      const markupItemPct = cost > 0 ? (revenue - cost) / cost * 100 : (revenue > 0 ? Infinity : null);
       const depPerUse = e.owned && e.totalUses > 0 ? e.purchasePrice / e.totalUses : 0;
       const depTotal = e.owned ? depPerUse * e.qty : 0;
       const roiEvents = e.owned && e.costUnit > 0 ? Math.ceil(e.purchasePrice / e.costUnit) : 0;
       const roiPaid = e.owned && roiEvents > 0 ? Math.min(e.usesUsed / roiEvents * 100, 100) : 0;
-      return { ...e, vol, weight, cost, depPerUse, depTotal, roiEvents, roiPaid };
+      return { ...e, vol, weight, cost, revenue, marginEur, marginPct, markupItemPct, depPerUse, depTotal, roiEvents, roiPaid };
     });
     const totalVol = eqCalcs.reduce((s, e) => s + e.vol, 0);
     const totalVolEff = totalVol / 0.70;
     const totalWeight = eqCalcs.reduce((s, e) => s + e.weight, 0);
     const totalEqCost = eqCalcs.reduce((s, e) => s + e.cost, 0);
+    const totalEqRevenue = eqCalcs.reduce((s, e) => s + e.revenue, 0);
+    const totalEqMargin = eqCalcs.reduce((s, e) => s + e.marginEur, 0);
     const totalDepreciation = eqCalcs.reduce((s, e) => s + e.depTotal, 0);
     const recVeh = VEH_DYN.find(v => v.vol >= totalVolEff && v.payload >= totalWeight) || VEH_DYN[VEH_DYN.length - 2];
     const weightOverVol = totalWeight > 0 && totalVolEff > 0 && VEH_DYN.find(v => v.vol >= totalVolEff) && VEH_DYN.find(v => v.vol >= totalVolEff).payload < totalWeight;
 
     // Purchases/Subs
-    const totalSub = d.subRentals.reduce((s, r) => s + r.cost, 0);
-    const totalPurch = d.purchases.reduce((s, r) => s + r.cost, 0);
+    const subCalcs = d.subRentals.map(s => {
+      const totalCost = s.cost * (s.qty || 1);
+      const totalRevenue = (s.revenue || 0) * (s.qty || 1);
+      const profit = totalRevenue - totalCost;
+      const markupPct = s.cost > 0 ? ((s.revenue || 0) - s.cost) / s.cost * 100 : 0;
+      return { ...s, totalCost, totalRevenue, profit, markupPct };
+    });
+    const totalSub = subCalcs.reduce((s, r) => s + r.totalCost, 0);
+    const totalSubRevenue = subCalcs.reduce((s, r) => s + r.totalRevenue, 0);
+    const totalSubProfit = subCalcs.reduce((s, r) => s + r.profit, 0);
+    const totalPurch = d.purchases.reduce((s, r) => s + r.cost * (r.qty || 1), 0);
 
     // Transport
     const legCalcs = d.legs.map(leg => {
@@ -307,8 +413,8 @@ export default function ItineraV4({ projectId, onBack }) {
 
     return {
       discAmt, revenueNet, margin, marginPct, markupPct, marginColor, marginPerDay,
-      eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalDepreciation, recVeh, weightOverVol,
-      totalSub, totalPurch, legCalcs, totalTransport, intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
+      eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalEqRevenue, totalEqMargin, totalDepreciation, recVeh, weightOverVol,
+      subCalcs, totalSub, totalSubRevenue, totalSubProfit, totalPurch, legCalcs, totalTransport, intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople,
       totalPlanCost, crewMeals, totalAccom, totalAn, totalDmg, totalMisc, totalPhHours,
       costMaterial, costsBeforeContingency, contingencyAmt, totalCosts, financialCost, totalCostsAll
     };
@@ -385,42 +491,505 @@ export default function ItineraV4({ projectId, onBack }) {
     }
   };
 
-  const handleRentmanImport = async (mapped, options) => {
-    if (!mapped) return;
-    try {
-      if (options.clearExisting) {
-        for (const field of ['eqItems', 'subRentals', 'purchases', 'misc']) {
-          const items = d[field] || [];
-          for (const item of items) { await deleteItem(field, item.id); }
+  // ═══ INCREMENTAL SYNC HELPERS (BATCH) ═══
+  const syncEquipmentItems = async (incomingItems) => {
+    const stats = { added: 0, updated: 0, removed: 0 };
+    // 1. Fetch existing equipment from DB
+    const { data: existing } = await supabase
+      .from('equipment_items')
+      .select('*')
+      .eq('project_id', projectId);
+    const existingRows = existing || [];
+
+    // 2. Map existing by rentman_id (String keys for consistent matching)
+    const existingByRentmanId = {};
+    for (const row of existingRows) {
+      if (row.rentman_id) existingByRentmanId[String(row.rentman_id)] = row;
+    }
+    console.log('SYNC: existing items found:', existingRows.length, 'with rentman_id:', Object.keys(existingByRentmanId).length);
+
+    // 3. Set of incoming rentman IDs
+    const incomingRentmanIds = new Set(
+      incomingItems.filter(i => i.rentmanId).map(i => String(i.rentmanId))
+    );
+
+    // 4. Collect batch arrays
+    const toUpdate = [];
+    const toInsert = [];
+    for (const item of incomingItems) {
+      const rid = item.rentmanId ? String(item.rentmanId) : null;
+      if (rid && existingByRentmanId[rid]) {
+        const row = existingByRentmanId[rid];
+        toUpdate.push({
+          id: row.id,
+          project_id: projectId,
+          description: item.desc || '',
+          supplier: item.supplier || '',
+          qty: item.qty || 1,
+          coefficient: item.coefficient ?? 1,
+          cost_unit: item.costUnit || 0,
+          l: item.l || 0, w: item.w || 0, h: item.h || 0,
+          weight_kg: item.weightKg || 0,
+          rentman_id: row.rentman_id,
+          // owned, purchase_price are PRESERVED
+        });
+      } else {
+        toInsert.push({
+          project_id: projectId,
+          description: item.desc || '',
+          supplier: item.supplier || '',
+          qty: item.qty || 1,
+          coefficient: item.coefficient ?? 1,
+          l: item.l || 0, w: item.w || 0, h: item.h || 0,
+          weight_kg: item.weightKg || 0,
+          cost_unit: item.costUnit || 0,
+          owned: false, purchase_price: 0, total_uses: 1, uses_used: 0,
+          rentman_id: item.rentmanId || null,
+        });
+      }
+    }
+
+    // 5. Collect IDs to delete (with rentman_id no longer in Rentman)
+    const toDeleteIds = existingRows
+      .filter(row => row.rentman_id && !incomingRentmanIds.has(String(row.rentman_id)))
+      .map(row => row.id);
+
+    // 6. Execute batches
+    if (toUpdate.length > 0) {
+      console.log('BATCH UPDATE:', toUpdate.length, 'equipment items');
+      const { error } = await supabase.from('equipment_items').upsert(toUpdate, { onConflict: 'id' });
+      if (error) { console.error('BATCH UPDATE error:', error); throw error; }
+      stats.updated = toUpdate.length;
+    }
+    if (toInsert.length > 0) {
+      console.log('BATCH INSERT:', toInsert.length, 'equipment items');
+      const { error } = await supabase.from('equipment_items').insert(toInsert);
+      if (error) { console.error('BATCH INSERT error:', error); throw error; }
+      stats.added = toInsert.length;
+    }
+    if (toDeleteIds.length > 0) {
+      console.log('BATCH DELETE:', toDeleteIds.length, 'equipment items');
+      const { error } = await supabase.from('equipment_items').delete().in('id', toDeleteIds);
+      if (error) { console.error('BATCH DELETE error:', error); throw error; }
+      stats.removed = toDeleteIds.length;
+    }
+
+    console.log('SYNC RESULT equipment:', stats);
+    return stats;
+  };
+
+  const syncCostEntries = async (incomingCosts, category) => {
+    const stats = { added: 0, updated: 0, removed: 0 };
+    // 1. Fetch existing costs for this category
+    const { data: existing } = await supabase
+      .from('cost_entries')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('category', category);
+    const existingRows = existing || [];
+
+    // 2. Map by rentman_id
+    const existingByRentmanId = {};
+    for (const row of existingRows) {
+      if (row.rentman_id) existingByRentmanId[String(row.rentman_id)] = row;
+    }
+
+    // 3. Incoming IDs
+    const incomingRentmanIds = new Set(
+      incomingCosts.filter(c => c.rentmanId).map(c => String(c.rentmanId))
+    );
+
+    // 4. Collect batch arrays
+    const toUpdate = [];
+    const toInsert = [];
+    for (const cost of incomingCosts) {
+      const rid = cost.rentmanId ? String(cost.rentmanId) : null;
+      if (rid && existingByRentmanId[rid]) {
+        const row = existingByRentmanId[rid];
+        toUpdate.push({
+          id: row.id,
+          project_id: projectId,
+          category,
+          description: cost.desc || '',
+          supplier: cost.supplier || '',
+          cost: cost.cost || 0,
+          quantity: cost.qty || 1,
+          rentman_id: row.rentman_id,
+          // vat_included is PRESERVED
+        });
+      } else {
+        toInsert.push({
+          project_id: projectId,
+          category,
+          description: cost.desc || '',
+          supplier: cost.supplier || '',
+          cost: cost.cost || 0,
+          quantity: cost.qty || 1,
+          vat_included: false,
+          rentman_id: cost.rentmanId || null,
+        });
+      }
+    }
+
+    // 5. Collect IDs to delete
+    const toDeleteIds = existingRows
+      .filter(row => row.rentman_id && !incomingRentmanIds.has(String(row.rentman_id)))
+      .map(row => row.id);
+
+    // 6. Execute batches
+    if (toUpdate.length > 0) {
+      console.log('BATCH UPDATE:', toUpdate.length, category, 'cost entries');
+      const { error } = await supabase.from('cost_entries').upsert(toUpdate, { onConflict: 'id' });
+      if (error) { console.error('BATCH UPDATE error:', error); throw error; }
+      stats.updated = toUpdate.length;
+    }
+    if (toInsert.length > 0) {
+      console.log('BATCH INSERT:', toInsert.length, category, 'cost entries');
+      const { error } = await supabase.from('cost_entries').insert(toInsert);
+      if (error) { console.error('BATCH INSERT error:', error); throw error; }
+      stats.added = toInsert.length;
+    }
+    if (toDeleteIds.length > 0) {
+      console.log('BATCH DELETE:', toDeleteIds.length, category, 'cost entries');
+      const { error } = await supabase.from('cost_entries').delete().in('id', toDeleteIds);
+      if (error) { console.error('BATCH DELETE error:', error); throw error; }
+      stats.removed = toDeleteIds.length;
+    }
+
+    console.log('SYNC RESULT', category + ':', stats);
+    return stats;
+  };
+
+  // ═══ COMPUTE SYNC DIFF ═══
+  const computeSyncDiff = (mapped, currentData) => {
+    const updates = [];
+    const additions = [];
+    const removals = [];
+
+    // — Equipment diff —
+    const existingEq = currentData.eqItems || [];
+    const existingEqMap = {};
+    for (const item of existingEq) {
+      if (item.rentmanId) existingEqMap[String(item.rentmanId)] = item;
+    }
+    const incomingEqIds = new Set();
+    for (const eq of (mapped.equipmentItems || [])) {
+      const rid = eq.rentmanId ? String(eq.rentmanId) : null;
+      if (rid) incomingEqIds.add(rid);
+      if (rid && existingEqMap[rid]) {
+        const ex = existingEqMap[rid];
+        const changes = [];
+        const fields = [
+          { field: 'descrizione', oldVal: ex.desc, newVal: eq.desc },
+          { field: 'qty', oldVal: ex.qty, newVal: eq.qty },
+          { field: 'coeff', oldVal: ex.coefficient, newVal: eq.coefficient },
+          { field: 'prezzo', oldVal: ex.costUnit, newVal: eq.costUnit },
+          { field: 'fornitore', oldVal: ex.supplier, newVal: eq.supplier || '' },
+          { field: 'L', oldVal: ex.l, newVal: eq.l },
+          { field: 'W', oldVal: ex.w, newVal: eq.w },
+          { field: 'H', oldVal: ex.h, newVal: eq.h },
+        ];
+        for (const f of fields) {
+          const o = f.oldVal ?? '';
+          const n = f.newVal ?? '';
+          if (String(o) !== String(n)) changes.push(f);
+        }
+        if (changes.length > 0) {
+          updates.push({ type: 'equipment', rentmanId: rid, description: ex.desc, desc: eq.desc, changes });
+        }
+      } else {
+        additions.push({ type: 'equipment', rentmanId: rid, desc: eq.desc, qty: eq.qty, supplier: eq.supplier, cost: eq.costUnit });
+      }
+    }
+    for (const item of existingEq) {
+      if (item.rentmanId && !incomingEqIds.has(String(item.rentmanId))) {
+        removals.push({ type: 'equipment', rentmanId: item.rentmanId, description: item.desc });
+      }
+    }
+
+    // — Cost entries diff (subRentals, purchases, misc) —
+    const costCategories = [
+      { incoming: mapped.subRentals || [], existing: currentData.subRentals || [], category: 'sub_rental', label: 'SubRental' },
+      { incoming: mapped.purchases || [], existing: currentData.purchases || [], category: 'purchase', label: 'Purchase' },
+      { incoming: mapped.miscCosts || [], existing: currentData.misc || [], category: 'misc', label: 'Misc' },
+    ];
+    for (const cat of costCategories) {
+      const existMap = {};
+      for (const c of cat.existing) { if (c.rentmanId) existMap[String(c.rentmanId)] = c; }
+      const inIds = new Set();
+      for (const c of cat.incoming) {
+        const rid = c.rentmanId ? String(c.rentmanId) : null;
+        if (rid) inIds.add(rid);
+        if (rid && existMap[rid]) {
+          const ex = existMap[rid];
+          const changes = [];
+          if (String(ex.desc || '') !== String(c.desc || '')) changes.push({ field: 'descrizione', oldVal: ex.desc, newVal: c.desc });
+          if (String(ex.supplier || '') !== String(c.supplier || '')) changes.push({ field: 'fornitore', oldVal: ex.supplier, newVal: c.supplier });
+          if (Number(ex.cost || 0) !== Number(c.cost || 0)) changes.push({ field: 'costo', oldVal: ex.cost, newVal: c.cost });
+          if (Number(ex.qty || 1) !== Number(c.qty || 1)) changes.push({ field: 'qty', oldVal: ex.qty || 1, newVal: c.qty || 1 });
+          if (changes.length > 0) updates.push({ type: cat.label, rentmanId: rid, description: ex.desc, desc: c.desc, changes });
+        } else {
+          additions.push({ type: cat.label, rentmanId: rid, desc: c.desc, supplier: c.supplier, cost: c.cost, qty: c.qty || 1 });
         }
       }
+      for (const c of cat.existing) {
+        if (c.rentmanId && !inIds.has(String(c.rentmanId))) {
+          removals.push({ type: cat.label, rentmanId: c.rentmanId, description: c.desc });
+        }
+      }
+    }
+
+    return { updates, additions, removals };
+  };
+
+  // ═══ DATA VALIDATION ═══
+  const validateEquipmentItem = (item) => {
+    if (!item.rentmanId && !item.desc) { console.warn('SKIP item: no rentmanId and no description'); return false; }
+    if (item.qty != null && (isNaN(Number(item.qty)) || Number(item.qty) < 0)) { console.warn('SKIP item', item.rentmanId, ': invalid qty', item.qty); return false; }
+    if (item.costUnit != null && isNaN(Number(item.costUnit))) { console.warn('SKIP item', item.rentmanId, ': invalid costUnit', item.costUnit); return false; }
+    return true;
+  };
+  const validateCostItem = (item) => {
+    if (!item.rentmanId && !item.desc) { console.warn('SKIP cost: no rentmanId and no description'); return false; }
+    if (item.cost != null && isNaN(Number(item.cost))) { console.warn('SKIP cost', item.rentmanId, ': invalid cost', item.cost); return false; }
+    return true;
+  };
+
+  const handleRentmanImport = async (mapped, options) => {
+    console.log('handleRentmanImport CALLED. options:', JSON.stringify(options));
+    if (!mapped) return null;
+    const startTime = Date.now();
+    const TIMEOUT_MS = 30000;
+    const results = { equipment: null, subRentals: null, purchases: null, misc: null, mode: 'clear', skipped: 0 };
+    const warnings = [];
+    console.log('SYNC MODE:', options.clearExisting ? 'DELETE+INSERT' : 'INCREMENTAL');
+
+    // ── Pre-sync snapshot (incremental only) ──
+    let snapshot = null;
+    if (!options.clearExisting) {
+      snapshot = {
+        eqItems: JSON.parse(JSON.stringify(d.eqItems || [])),
+        subRentals: JSON.parse(JSON.stringify(d.subRentals || [])),
+        purchases: JSON.parse(JSON.stringify(d.purchases || [])),
+        misc: JSON.parse(JSON.stringify(d.misc || [])),
+      };
+      console.log('[Snapshot] Saved', snapshot.eqItems.length, 'equipment,', snapshot.subRentals.length + snapshot.purchases.length + snapshot.misc.length, 'costs');
+    }
+
+    // ── Validate incoming data ──
+    let skipped = 0;
+    const validEquipment = (mapped.equipmentItems || []).filter(item => {
+      if (validateEquipmentItem(item)) return true;
+      skipped++;
+      warnings.push(`Equipment skippato: ${item.rentmanId || 'N/A'}`);
+      return false;
+    });
+    const validSubRentals = (mapped.subRentals || []).filter(item => {
+      if (validateCostItem(item)) return true;
+      skipped++;
+      warnings.push(`SubRental skippato: ${item.rentmanId || 'N/A'}`);
+      return false;
+    });
+    const validPurchases = (mapped.purchases || []).filter(item => {
+      if (validateCostItem(item)) return true;
+      skipped++;
+      warnings.push(`Purchase skippato: ${item.rentmanId || 'N/A'}`);
+      return false;
+    });
+    const validMiscCosts = (mapped.miscCosts || []).filter(item => {
+      if (validateCostItem(item)) return true;
+      skipped++;
+      warnings.push(`MiscCost skippato: ${item.rentmanId || 'N/A'}`);
+      return false;
+    });
+    results.skipped = skipped;
+    if (skipped > 0) console.warn('[Validation]', skipped, 'items skippati:', warnings);
+
+    // ── Sync logic wrapped with timeout ──
+    const syncWork = async () => {
+      if (options.clearExisting) {
+        // ── CLEAR + INSERT (batch operations) ──
+        results.mode = 'clear';
+
+        const deletePromises = [];
+        const eqIds = (d.eqItems || []).map(i => i.id);
+        if (eqIds.length > 0) deletePromises.push(supabase.from('equipment_items').delete().in('id', eqIds));
+        for (const cat of ['subRentals', 'purchases', 'misc']) {
+          const ids = (d[cat] || []).map(i => i.id);
+          if (ids.length > 0) deletePromises.push(supabase.from('cost_entries').delete().in('id', ids));
+        }
+        if (deletePromises.length > 0) {
+          console.log('BATCH DELETE: clearing', eqIds.length, 'equipment +', (d.subRentals?.length || 0) + (d.purchases?.length || 0) + (d.misc?.length || 0), 'costs');
+          await Promise.all(deletePromises);
+        }
+
+        if (options.equipment && validEquipment.length > 0) {
+          const eqRows = validEquipment.map(eq => ({
+            project_id: projectId,
+            description: eq.desc || '', supplier: eq.supplier || '', qty: eq.qty || 1,
+            coefficient: eq.coefficient ?? 1, l: eq.l || 0, w: eq.w || 0, h: eq.h || 0,
+            weight_kg: eq.weightKg || 0, cost_unit: eq.costUnit || 0,
+            owned: false, purchase_price: 0, total_uses: 1, uses_used: 0,
+            rentman_id: eq.rentmanId || null,
+          }));
+          console.log('BATCH INSERT:', eqRows.length, 'equipment items');
+          const { error } = await supabase.from('equipment_items').insert(eqRows);
+          if (error) { console.error('BATCH INSERT equipment error:', error); throw error; }
+        }
+
+        if (options.costs) {
+          const costRows = [];
+          for (const sr of validSubRentals) costRows.push({ project_id: projectId, category: 'sub_rental', supplier: sr.supplier || '', description: sr.desc || '', cost: sr.cost || 0, quantity: sr.qty || 1, vat_included: false, rentman_id: sr.rentmanId || null });
+          for (const p of validPurchases) costRows.push({ project_id: projectId, category: 'purchase', supplier: p.supplier || '', description: p.desc || '', cost: p.cost || 0, quantity: p.qty || 1, vat_included: false, rentman_id: p.rentmanId || null });
+          for (const m of validMiscCosts) costRows.push({ project_id: projectId, category: 'misc', description: m.desc || '', cost: m.cost || 0, quantity: m.qty || 1, rentman_id: m.rentmanId || null });
+          if (costRows.length > 0) {
+            console.log('BATCH INSERT:', costRows.length, 'cost entries');
+            const { error } = await supabase.from('cost_entries').insert(costRows);
+            if (error) { console.error('BATCH INSERT costs error:', error); throw error; }
+          }
+        }
+      } else {
+        // ── INCREMENTAL SYNC ──
+        results.mode = 'sync';
+        if (options.equipment && validEquipment.length > 0) {
+          results.equipment = await syncEquipmentItems(validEquipment);
+          console.log('[RentmanSync] Equipment:', results.equipment);
+        }
+        if (options.costs) {
+          if (validSubRentals.length > 0) {
+            results.subRentals = await syncCostEntries(validSubRentals, 'sub_rental');
+            console.log('[RentmanSync] SubRentals:', results.subRentals);
+          }
+          if (validPurchases.length > 0) {
+            results.purchases = await syncCostEntries(validPurchases, 'purchase');
+            console.log('[RentmanSync] Purchases:', results.purchases);
+          }
+          if (validMiscCosts.length > 0) {
+            results.misc = await syncCostEntries(validMiscCosts, 'misc');
+            console.log('[RentmanSync] Misc:', results.misc);
+          }
+        }
+      }
+
+      // Update project info
       if (options.projectInfo && mapped.projectFields) {
         for (const [field, value] of Object.entries(mapped.projectFields)) {
           if (value != null && value !== '') await updateField(field, value);
         }
       }
-      if (options.equipment && mapped.equipmentItems.length > 0) {
-        for (const eq of mapped.equipmentItems) {
-          await addItem('eqItems', {
-            desc: eq.desc, supplier: eq.supplier || '', qty: eq.qty, coefficient: eq.coefficient ?? 1, l: eq.l, w: eq.w, h: eq.h,
-            weightKg: eq.weightKg, costUnit: eq.costUnit,
-            owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0,
-          });
-        }
+
+      // Update Rentman sync metadata
+      if (mapped.rentmanProjectId) {
+        await updateProjectMeta({
+          last_rentman_sync: new Date().toISOString(),
+          rentman_project_id: mapped.rentmanProjectId,
+        });
       }
-      if (options.costs) {
-        for (const sr of mapped.subRentals) {
-          await addItem('subRentals', { supplier: sr.supplier || '', desc: sr.desc, cost: sr.cost, vatIncl: false });
-        }
-        for (const p of mapped.purchases) {
-          await addItem('purchases', { supplier: p.supplier || '', desc: p.desc, cost: p.cost, vatIncl: false });
-        }
-        for (const m of mapped.miscCosts) {
-          await addItem('misc', { desc: m.desc, cost: m.cost });
-        }
-      }
+
+      await reload();
+    };
+
+    try {
+      // ── Execute with timeout ──
+      await Promise.race([
+        syncWork(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: sync ha superato i 30 secondi')), TIMEOUT_MS)),
+      ]);
+
+      // ── Save sync log (success) ──
+      const durationMs = Date.now() - startTime;
+      const eqStats = results.equipment || { added: 0, updated: 0, removed: 0 };
+      const costCats = [results.subRentals, results.purchases, results.misc].filter(Boolean);
+      const costStats = costCats.reduce((a, s) => ({ added: a.added + s.added, updated: a.updated + s.updated, removed: a.removed + s.removed }), { added: 0, updated: 0, removed: 0 });
+      await supabase.from('sync_logs').insert({
+        project_id: projectId,
+        sync_type: results.mode === 'sync' ? 'incremental' : 'full',
+        equipment_added: results.mode === 'clear' ? (validEquipment.length || 0) : eqStats.added,
+        equipment_updated: eqStats.updated,
+        equipment_removed: eqStats.removed,
+        costs_added: results.mode === 'clear' ? (validSubRentals.length + validPurchases.length + validMiscCosts.length) : costStats.added,
+        costs_updated: costStats.updated,
+        costs_removed: costStats.removed,
+        rentman_project_id: mapped.rentmanProjectId || null,
+        duration_ms: durationMs,
+        synced_at: new Date().toISOString(),
+        items_skipped: skipped,
+        errors: warnings.length > 0 ? warnings.join('; ') : null,
+      });
+      console.log('[SyncLog] Saved. Duration:', durationMs, 'ms. Skipped:', skipped);
+
+      return results;
     } catch (err) {
       console.error('Rentman import error:', err);
+      console.error('Stack:', err.stack);
+
+      // Save error sync log
+      const durationMs = Date.now() - startTime;
+      await supabase.from('sync_logs').insert({
+        project_id: projectId,
+        sync_type: results.mode === 'sync' ? 'incremental' : 'full',
+        equipment_added: 0, equipment_updated: 0, equipment_removed: 0,
+        costs_added: 0, costs_updated: 0, costs_removed: 0,
+        rentman_project_id: mapped.rentmanProjectId || null,
+        duration_ms: durationMs,
+        synced_at: new Date().toISOString(),
+        items_skipped: skipped,
+        errors: `ERRORE: ${err.message}`,
+      }).catch(logErr => console.error('Failed to save error log:', logErr));
+
+      // Toast error
+      if (toast) toast.error(`❌ Errore sync: ${err.message}. I dati potrebbero essere incompleti.`, 8000);
+
+      // Offer rollback for incremental mode
+      if (snapshot && !options.clearExisting) {
+        const doRollback = window.confirm('Sync fallita. Vuoi ripristinare i dati precedenti?');
+        if (doRollback) {
+          console.log('[Rollback] Restoring snapshot...');
+          try {
+            // Delete current items and re-insert from snapshot
+            const { data: curEq } = await supabase.from('equipment_items').select('id').eq('project_id', projectId);
+            if (curEq?.length > 0) await supabase.from('equipment_items').delete().in('id', curEq.map(r => r.id));
+            const { data: curCosts } = await supabase.from('cost_entries').select('id').eq('project_id', projectId);
+            if (curCosts?.length > 0) await supabase.from('cost_entries').delete().in('id', curCosts.map(r => r.id));
+
+            // Re-insert equipment from snapshot
+            if (snapshot.eqItems.length > 0) {
+              const rows = snapshot.eqItems.map(e => ({
+                project_id: projectId, description: e.desc || '', supplier: e.supplier || '', qty: e.qty || 1,
+                coefficient: e.coefficient ?? 1, l: e.l || 0, w: e.w || 0, h: e.h || 0,
+                weight_kg: e.weightKg || 0, cost_unit: e.costUnit || 0, owned: e.owned || false,
+                purchase_price: e.purchasePrice || 0, total_uses: e.totalUses || 1, uses_used: e.usesUsed || 0,
+                rentman_id: e.rentmanId || null,
+              }));
+              await supabase.from('equipment_items').insert(rows);
+            }
+            // Re-insert costs from snapshot
+            const costSnap = [
+              ...snapshot.subRentals.map(c => ({ ...c, category: 'sub_rental' })),
+              ...snapshot.purchases.map(c => ({ ...c, category: 'purchase' })),
+              ...snapshot.misc.map(c => ({ ...c, category: 'misc' })),
+            ];
+            if (costSnap.length > 0) {
+              const rows = costSnap.map(c => ({
+                project_id: projectId, category: c.category, description: c.desc || '',
+                supplier: c.supplier || '', cost: c.cost || 0, vat_included: c.vatIncl || false,
+                rentman_id: c.rentmanId || null,
+              }));
+              await supabase.from('cost_entries').insert(rows);
+            }
+
+            await reload();
+            if (toast) toast.success('✅ Dati ripristinati dallo snapshot pre-sync', 5000);
+            console.log('[Rollback] Complete');
+          } catch (rollErr) {
+            console.error('[Rollback] Failed:', rollErr);
+            if (toast) toast.error('❌ Anche il ripristino è fallito: ' + rollErr.message, 8000);
+          }
+        }
+      }
+
+      results.error = err.message;
+      return results;
     }
   };
 
@@ -434,7 +1003,13 @@ export default function ItineraV4({ projectId, onBack }) {
         <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>← Progetti</button>
         <span style={{ color: '#fff', fontSize: isMobile ? 12 : 14, fontWeight: 700 }}>ITINERA — {d.projectCode ? `[${d.projectCode}] ` : ''}{d.projectName}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button onClick={() => setShowRentmanModal(true)} style={{ background: 'rgba(46,134,171,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>📡 Rentman</button>
+          <button onClick={() => setShowRentmanModal(true)} style={{ background: 'rgba(46,134,171,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600, position: 'relative' }} title={pendingNotifCount > 0 ? `${pendingNotifCount} modifiche rilevate in Rentman` : 'Importa da Rentman'}>
+            📡 Rentman
+            {pendingNotifCount > 0 && (
+              <span style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: '50%', minWidth: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', border: '2px solid #1B3A5C', lineHeight: 1 }}>{pendingNotifCount}</span>
+            )}
+          </button>
+          <button onClick={() => setShowSyncHistory(true)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }} title="Cronologia Sync">🕐</button>
           <ExportPDFButton projectData={d} calc={calc} appConfig={appConfig} style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6 }} />
         </div>
       </div>
@@ -576,45 +1151,81 @@ export default function ItineraV4({ projectId, onBack }) {
 
           <div id="section-materiale">
             {/* ═══ EQUIPMENT ═══ */}
-            <Card title={`Materiale & Ingombro | €${fmt(calc.totalEqCost)} | ${fmtD(calc.totalVol, 1)}m³ | ${fmt(calc.totalWeight)}kg`} icon="📦" open={isO("eq")} onToggle={() => tgl("eq")}>
+            <Card title={`Materiale | Costo €${fmt(calc.totalEqCost)} | Ricavo €${fmt(calc.totalEqRevenue)} | Margine €${fmt(calc.totalEqMargin)} | ${fmtD(calc.totalVol, 1)}m³ | ${fmt(calc.totalWeight)}kg`} icon="📦" open={isO("eq")} onToggle={() => tgl("eq")}>
+              <style>{`
+                .eq-col-hl input { border: 2px solid #2E86AB !important; background: #f0f7ff !important; font-weight: 700 !important; color: #1B3A5C !important; }
+                .eq-col-sell input { border: 2px solid #27ae60 !important; background: #f0fff5 !important; font-weight: 700 !important; color: #1a5c2e !important; }
+              `}</style>
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.4fr 0.4fr 0.45fr 0.45fr 0.45fr 0.5fr 0.55fr 0.55fr 0.5fr 0.4fr 0.6fr auto", gap: 3, minWidth: 960, marginBottom: 3 }}>
-                  {["Descrizione", "Fornitore", "Qty", "Coeff.", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "", "Costo", ""].map((h, i) => <span key={h + i} style={{ fontSize: 8, color: "#999", fontWeight: 600 }}>{h}</span>)}
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 1060, marginBottom: 3, alignItems: "end" }}>
+                  {["", "Descrizione", "Fornitore", "Qty", "Coeff.", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""].map((h, i) => {
+                    const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
+                    const hlSell = h === "Vendita €/pz";
+                    const hl = hlCost || hlSell;
+                    return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#ffffff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 3 ? "center" : "left", letterSpacing: 0.3 }}>{h}</span>;
+                  })}
                 </div>
-                {calc.eqCalcs.map((e, idx) => (
-                  <div key={e.id} {...getDragPropsEq(idx)}>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto 1.8fr 1fr 0.4fr 0.4fr 0.45fr 0.45fr 0.45fr 0.5fr 0.55fr 0.55fr 0.5fr 0.4fr 0.6fr auto", gap: 3, minWidth: 960, marginBottom: 1, alignItems: "center" }}>
-                      <span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span>
-                      <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
-                      <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
-                      <Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", v)} align="center" />
-                      <Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" />
-                      <Inp type="number" value={e.l} onChange={v => updateObjList("eqItems", e.id, "l", v)} align="center" />
-                      <Inp type="number" value={e.w} onChange={v => updateObjList("eqItems", e.id, "w", v)} align="center" />
-                      <Inp type="number" value={e.h} onChange={v => updateObjList("eqItems", e.id, "h", v)} align="center" />
-                      <Inp type="number" value={e.weightKg} onChange={v => updateObjList("eqItems", e.id, "weightKg", v)} align="center" />
-                      <div style={{ fontSize: 10, textAlign: "center", color: "#2E86AB", fontWeight: 600 }}>{fmtD2(e.vol)}</div>
-                      <div style={{ fontSize: 10, textAlign: "center", color: "#e67e22", fontWeight: 600 }}>{fmt(e.weight)}</div>
-                      <Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" />
-                      <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
-                      <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
-                      <X onClick={() => delObj("eqItems", e.id)} />
-                    </div>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: 4, alignItems: "center", flexWrap: "wrap" }}>
-                      <Chk label="Proprio" checked={e.owned} onChange={v => updateObjList("eqItems", e.id, "owned", v)} />
-                      {e.owned && <>
-                        <F label="Acquisto €" value={e.purchasePrice} onChange={v => updateObjList("eqItems", e.id, "purchasePrice", v)} w="0.5" />
-                        <F label="Utilizzi vita" value={e.totalUses} onChange={v => updateObjList("eqItems", e.id, "totalUses", v)} w="0.4" />
-                        <F label="Già usati" value={e.usesUsed} onChange={v => updateObjList("eqItems", e.id, "usesUsed", v)} w="0.4" />
-                        <span style={{ fontSize: 9, color: "#888" }}>
-                          Ammort: €{fmtD2(e.depPerUse)}/uso → <strong>€{fmtD2(e.depTotal)}</strong>/ev | ROI: {e.roiEvents} ev ({fmtD(e.roiPaid)}%{e.roiPaid >= 100 ? " ✅" : ""})
+                {calc.eqCalcs.map((e, idx) => {
+                  const mColor = e.marginEur > 0 ? (e.marginPct >= 15 ? '#27ae60' : '#e67e22') : e.marginEur < 0 ? '#e74c3c' : '#999';
+                  return (
+                    <div key={e.id} {...getDragPropsEq(idx)}>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 1060, marginBottom: 1, alignItems: "center" }}>
+                        <span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span>
+                        <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
+                        <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
+                        <div className="eq-col-hl"><Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" vr={{ min: 0, max: 9999 }} /></div>
+                        <div className="eq-col-hl"><Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" vr={{ min: 0.1, max: 99 }} /></div>
+                        <Inp type="number" value={e.l} onChange={v => updateObjList("eqItems", e.id, "l", v)} align="center" />
+                        <Inp type="number" value={e.w} onChange={v => updateObjList("eqItems", e.id, "w", v)} align="center" />
+                        <Inp type="number" value={e.h} onChange={v => updateObjList("eqItems", e.id, "h", v)} align="center" />
+                        <Inp type="number" value={e.weightKg} onChange={v => updateObjList("eqItems", e.id, "weightKg", v)} align="center" />
+                        <div style={{ fontSize: 10, textAlign: "center", color: "#2E86AB", fontWeight: 600 }}>{fmtD2(e.vol)}</div>
+                        <div style={{ fontSize: 10, textAlign: "center", color: "#e67e22", fontWeight: 600 }}>{fmt(e.weight)}</div>
+                        <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
+                        <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
+                        <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
+                        <X onClick={() => delObj("eqItems", e.id)} />
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: 4, alignItems: "center", flexWrap: "wrap" }}>
+                        <Chk label="Proprio" checked={e.owned} onChange={v => updateObjList("eqItems", e.id, "owned", v)} />
+                        {e.owned && <>
+                          <F label="Acquisto €" value={e.purchasePrice} onChange={v => updateObjList("eqItems", e.id, "purchasePrice", v)} w="0.5" />
+                          <F label="Utilizzi vita" value={e.totalUses} onChange={v => updateObjList("eqItems", e.id, "totalUses", v)} w="0.4" />
+                          <F label="Già usati" value={e.usesUsed} onChange={v => updateObjList("eqItems", e.id, "usesUsed", v)} w="0.4" />
+                          <span style={{ fontSize: 9, color: "#888" }}>
+                            Ammort: €{fmtD2(e.depPerUse)}/uso → <strong>€{fmtD2(e.depTotal)}</strong>/ev | ROI: {e.roiEvents} ev ({fmtD(e.roiPaid)}%{e.roiPaid >= 100 ? " ✅" : ""})
+                          </span>
+                        </>}
+                        <span style={{ fontSize: 9, marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, background: mColor + '12', color: mColor, fontWeight: 700, display: 'inline-flex', gap: 8 }}>
+                          Margine: <strong>€{fmt(e.marginEur)}</strong>
+                          {' | Margine %: '}<strong>{e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'}</strong>
+                          {' | Ricarico: '}<strong>{e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}</strong>
                         </span>
-                      </>}
+                      </div>
                     </div>
+                  )
+                })}
+                {calc.eqCalcs.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 1060, marginTop: 4, paddingTop: 4, borderTop: "1px solid #e0e6ed", alignItems: "center" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#1B3A5C", gridColumn: "span 14" }}>TOTALI</span>
+                    <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#555" }}>€{fmt(calc.totalEqCost)}</div>
+                    <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#2E86AB" }}>€{fmt(calc.totalEqRevenue)}</div>
+                    <span></span>
                   </div>
-                ))}
+                )}
+                {calc.eqCalcs.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4, paddingRight: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: calc.totalEqMargin >= 0 ? '#27ae60' : '#e74c3c' }}>
+                      Margine Tot: €{fmt(calc.totalEqMargin)}
+                      {calc.totalEqRevenue > 0 ? ` (${fmtD((calc.totalEqRevenue - calc.totalEqCost) / calc.totalEqRevenue * 100)}%)` : ''}
+                      {calc.totalEqCost > 0 ? ` | Ricarico: ${fmtD((calc.totalEqRevenue - calc.totalEqCost) / calc.totalEqCost * 100)}%` : ''}
+                    </span>
+                  </div>
+                )}
               </div>
-              <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0 })} s>+ Materiale</Btn>
+              <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0 })} s>+ Materiale</Btn>
               <Sub text={`Volume: ${fmtD2(calc.totalVol)}m³ → Effettivo (÷0.70): ${fmtD(calc.totalVolEff)}m³ | Peso: ${fmt(calc.totalWeight)}kg | Min: ${calc.recVeh.name} | Ammort: €${fmt(calc.totalDepreciation)}`} />
               {calc.weightOverVol && <Warn text={`⚠️ PESO: ${fmt(calc.totalWeight)}kg supera portata veicolo per volume. Serve veicolo più grande o più viaggi!`} />}
             </Card>
@@ -624,17 +1235,39 @@ export default function ItineraV4({ projectId, onBack }) {
           {/* ═══ SUB-RENTALS & PURCHASES ═══ */}
           <div style={{ display: "flex", flexDirection: isMobile ? 'column' : 'row', gap: 10 }} className="no-print">
             <div style={{ flex: 1 }}>
-              <Card title={`Sub-noleggi | €${fmt(calc.totalSub)}`} icon="🔄" open={isO("sb")} onToggle={() => tgl("sb")}>
-                {d.subRentals.map(s => (
-                  <R key={s.id}>
-                    <div style={{ flex: 1 }}><label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 2 }}>Fornitore</label><SupplierInput value={s.supplier || ''} onChange={v => updateObjList('subRentals', s.id, 'supplier', v)} placeholder="Cerca fornitore..." suppliersList={suppliersList} onAutoSave={autoSaveSupplier} /></div>
-                    <F label="Descrizione" value={s.desc} onChange={v => updateObjList("subRentals", s.id, "desc", v)} type="text" w="1" />
-                    <F label="Costo €" value={s.cost} onChange={v => updateObjList("subRentals", s.id, "cost", v)} w="0.6" />
-                    <div style={{ paddingTop: 12 }}><Chk label="IVA incl." checked={s.vatIncl} onChange={v => updateObjList("subRentals", s.id, "vatIncl", v)} /></div>
-                    <X onClick={() => delObj("subRentals", s.id)} />
-                  </R>
-                ))}
-                <Btn onClick={() => addObj("subRentals", { supplier: "", desc: "", cost: 0, vatIncl: false })} s>+ Sub-noleggio</Btn>
+              <Card title={`Sub-noleggi | Costo €${fmt(calc.totalSub)} | Ricavo €${fmt(calc.totalSubRevenue)} | Guadagno €${fmt(calc.totalSubProfit)}`} icon="🔄" open={isO("sb")} onToggle={() => tgl("sb")}>
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.5fr 0.5fr 0.4fr 0.5fr 0.6fr 0.6fr 0.5fr 0.6fr auto", gap: 3, minWidth: 780, marginBottom: 3 }}>
+                    {["Fornitore", "Descrizione", "Costo €/pz", "Qty", "Ricavo €/pz", "Costo Tot", "Ricavo Tot", "Ricarico %", "Guadagno €", ""].map(h => <span key={h} style={{ fontSize: 8, color: "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
+                  </div>
+                  {calc.subCalcs.map(s => (
+                    <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1.5fr 0.5fr 0.4fr 0.5fr 0.6fr 0.6fr 0.5fr 0.6fr auto", gap: 3, minWidth: 780, marginBottom: 2, alignItems: "center" }}>
+                      <div><SupplierInput value={s.supplier || ''} onChange={v => updateObjList('subRentals', s.id, 'supplier', v)} placeholder="Fornitore" suppliersList={suppliersList} onAutoSave={autoSaveSupplier} /></div>
+                      <Inp value={s.desc} onChange={v => updateObjList("subRentals", s.id, "desc", v)} ph="Descrizione" />
+                      <Inp type="number" value={s.cost} onChange={v => updateObjList("subRentals", s.id, "cost", v)} align="right" />
+                      <Inp type="number" value={s.qty} onChange={v => updateObjList("subRentals", s.id, "qty", v)} align="center" vr={{ min: 0, max: 9999 }} />
+                      <Inp type="number" value={s.revenue} onChange={v => updateObjList("subRentals", s.id, "revenue", v)} align="right" />
+                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 600, color: "#555" }}>€{fmt(s.totalCost)}</div>
+                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 600, color: "#2E86AB" }}>€{fmt(s.totalRevenue)}</div>
+                      <div style={{ fontSize: 10, textAlign: "center", fontWeight: 600, color: s.markupPct >= 0 ? "#27ae60" : "#e74c3c" }}>{s.cost > 0 ? `${fmtD(s.markupPct)}%` : '—'}</div>
+                      <div style={{ fontSize: 11, textAlign: "right", fontWeight: 700, color: s.profit >= 0 ? "#27ae60" : "#e74c3c" }}>€{fmt(s.profit)}</div>
+                      <X onClick={() => delObj("subRentals", s.id)} />
+                    </div>
+                  ))}
+                  {calc.subCalcs.length > 0 && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.5fr 0.5fr 0.4fr 0.5fr 0.6fr 0.6fr 0.5fr 0.6fr auto", gap: 3, minWidth: 780, marginTop: 4, paddingTop: 4, borderTop: "1px solid #e0e6ed", alignItems: "center" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#1B3A5C", gridColumn: "span 5" }}>TOTALI</span>
+                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#555" }}>€{fmt(calc.totalSub)}</div>
+                      <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#2E86AB" }}>€{fmt(calc.totalSubRevenue)}</div>
+                      <div style={{ fontSize: 10, textAlign: "center", fontWeight: 700, color: calc.totalSub > 0 ? (calc.totalSubProfit >= 0 ? "#27ae60" : "#e74c3c") : "#999" }}>{calc.totalSub > 0 ? `${fmtD((calc.totalSubRevenue - calc.totalSub) / calc.totalSub * 100)}%` : '—'}</div>
+                      <div style={{ fontSize: 11, textAlign: "right", fontWeight: 800, color: calc.totalSubProfit >= 0 ? "#27ae60" : "#e74c3c" }}>€{fmt(calc.totalSubProfit)}</div>
+                      <span></span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                  <Btn onClick={() => addObj("subRentals", { supplier: "", desc: "", cost: 0, qty: 1, revenue: 0, vatIncl: false })} s>+ Sub-noleggio</Btn>
+                </div>
               </Card>
             </div>
             <div style={{ flex: 1 }}>
@@ -839,10 +1472,51 @@ export default function ItineraV4({ projectId, onBack }) {
       {showRentmanModal && (
         <RentmanImportModal
           onClose={() => setShowRentmanModal(false)}
-          onImport={(mapped, options) => {
-            handleRentmanImport(mapped, options);
-            setTimeout(() => setShowRentmanModal(false), 1500);
+          onImport={async (mapped, options) => {
+            // ── DIFF PREVIEW for incremental sync ──
+            if (!options.clearExisting) {
+              setShowRentmanModal(false);
+              const diff = computeSyncDiff(mapped, d);
+              setPendingSync({ mapped, options, diff });
+              return null;
+            }
+            // ── Full import: proceed directly ──
+            const results = await handleRentmanImport(mapped, options);
+            if (results && toast && !results.error) {
+              const skippedMsg = results.skipped > 0 ? `, ${results.skipped} skippati` : '';
+              toast.success(`✅ Import completo: dati Rentman importati${skippedMsg}`, 5000);
+              acknowledgeNotifications();
+            }
+            return results;
           }}
+        />
+      )}
+      {pendingSync && (
+        <SyncDiffModal
+          diff={pendingSync.diff}
+          onCancel={() => setPendingSync(null)}
+          onApply={async () => {
+            const { mapped, options } = pendingSync;
+            setPendingSync(null);
+            const results = await handleRentmanImport(mapped, options);
+            if (results && toast && !results.error) {
+              const skippedMsg = results.skipped > 0 ? `, ${results.skipped} skippati` : '';
+              const cats = [results.equipment, results.subRentals, results.purchases, results.misc].filter(Boolean);
+              const totals = cats.reduce((a, s) => ({ added: a.added + s.added, updated: a.updated + s.updated, removed: a.removed + s.removed }), { added: 0, updated: 0, removed: 0 });
+              const parts = [];
+              if (totals.updated > 0) parts.push(`${totals.updated} aggiornati`);
+              if (totals.added > 0) parts.push(`${totals.added} aggiunti`);
+              if (totals.removed > 0) parts.push(`${totals.removed} rimossi`);
+              toast.success(`✅ Sync incrementale: ${parts.length > 0 ? parts.join(', ') : 'nessuna modifica'}${skippedMsg}`, 5000);
+              acknowledgeNotifications();
+            }
+          }}
+        />
+      )}
+      {showSyncHistory && (
+        <SyncHistoryModal
+          projectId={projectId}
+          onClose={() => setShowSyncHistory(false)}
         />
       )}
     </div>

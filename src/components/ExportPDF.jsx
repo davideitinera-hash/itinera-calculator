@@ -1,42 +1,40 @@
-import { useAppConfig } from '../hooks/useAppConfig';
-
+// eslint-disable-next-line react-refresh/only-export-components
 export function generateQuotePDF(projectData, calc, appConfig) {
-    const d = projectData;
-    const branding = appConfig?.branding || {};
-    const units = appConfig?.units || {};
-    const fmt = v => (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 });
-    const fmtD = v => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const today = new Date().toLocaleDateString('it-IT');
-    const eventDate = d.eventDate ? new Date(d.eventDate).toLocaleDateString('it-IT') : 'Da definire';
+  const d = projectData;
+  const branding = appConfig?.branding || {};
+  const fmt = v => (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+  const fmtD = v => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const today = new Date().toLocaleDateString('it-IT');
+  const eventDate = d.eventDate ? new Date(d.eventDate).toLocaleDateString('it-IT') : 'Da definire';
 
-    const primaryColor = branding.pdfHeaderColor || '#1B3A5C';
-    const accentColor = branding.pdfAccentColor || '#2E86AB';
-    const companyName = branding.companyFullName || 'Itinera Pro S.r.l.';
-    const tagline = branding.tagline || 'Event Production & Design';
-    const footer = branding.pdfFooterText || '';
-    const legalNotes = branding.quoteLegalNotes || '';
-    const paymentTerms = branding.quotePaymentTerms || '';
-    const showWatermark = branding.pdfWatermark && d.status === 'draft';
-    const watermarkText = branding.pdfWatermarkText || 'BOZZA';
+  const primaryColor = branding.pdfHeaderColor || '#1B3A5C';
+  const accentColor = branding.pdfAccentColor || '#2E86AB';
+  const companyName = branding.companyFullName || 'Itinera Pro S.r.l.';
+  const tagline = branding.tagline || 'Event Production & Design';
+  const footer = branding.pdfFooterText || '';
+  const legalNotes = branding.quoteLegalNotes || '';
+  const paymentTerms = branding.quotePaymentTerms || '';
+  const showWatermark = branding.pdfWatermark && d.status === 'draft';
+  const watermarkText = branding.pdfWatermarkText || 'BOZZA';
 
-    const costBreakdown = [
-        { label: 'Materiale e Attrezzature', value: calc.totalEquipment || 0 },
-        { label: 'Trasporto', value: calc.totalTransport || 0 },
-        { label: 'Personale', value: (calc.totalIntStaff || 0) + (calc.totalExtStaff || 0) },
-        { label: 'Sub-noleggi', value: calc.totalSubRentals || 0 },
-        { label: 'Acquisti', value: calc.totalPurchases || 0 },
-        { label: 'Magazzino', value: calc.warehouseCost || 0 },
-        { label: 'Pianificazione', value: calc.planningCost || 0 },
-        { label: 'Vitto e Alloggio', value: calc.mealAccomCost || 0 },
-        { label: 'Costi Analitici', value: calc.totalAnalytics || 0 },
-        { label: 'Contingency', value: calc.contingencyCost || 0 },
-    ].filter(c => c.value > 0);
+  const costBreakdown = [
+    { label: 'Materiale e Attrezzature', value: calc.totalEquipment || 0 },
+    { label: 'Trasporto', value: calc.totalTransport || 0 },
+    { label: 'Personale', value: (calc.totalIntStaff || 0) + (calc.totalExtStaff || 0) },
+    { label: 'Sub-noleggi', value: calc.totalSubRentals || 0 },
+    { label: 'Acquisti', value: calc.totalPurchases || 0 },
+    { label: 'Magazzino', value: calc.warehouseCost || 0 },
+    { label: 'Pianificazione', value: calc.planningCost || 0 },
+    { label: 'Vitto e Alloggio', value: calc.mealAccomCost || 0 },
+    { label: 'Costi Analitici', value: calc.totalAnalytics || 0 },
+    { label: 'Contingency', value: calc.contingencyCost || 0 },
+  ].filter(c => c.value > 0);
 
-    const equipmentList = (d.eqItems || []).filter(e => e.desc);
-    const transportList = (d.legs || []).filter(l => l.desc || l.route);
-    const phases = (d.phases || []).filter(p => p.phase);
+  const equipmentList = (d.eqItems || []).filter(e => e.desc);
+  const transportList = (d.legs || []).filter(l => l.desc || l.route);
+  const phases = (d.phases || []).filter(p => p.phase);
 
-    const html = `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -108,8 +106,8 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
     <div class="summary-box">
       <div class="summary-grid">
         <div class="summary-item"><div class="label">Ricavo Netto</div><div class="value">${fmt(calc.revenueNet)} EUR</div></div>
-        <div class="summary-item"><div class="label">Costi Totali</div><div class="value">${fmt(calc.totalCosts)} EUR</div></div>
-        <div class="summary-item"><div class="label">Margine</div><div class="value ${(calc.marginPct || 0) >= 0 ? 'margin-positive' : 'margin-negative'}" style="color: ${(calc.marginPct || 0) >= 0 ? '#86efac' : '#fca5a5'}">${fmtD(calc.marginPct)}%</div></div>
+        <div class="summary-item"><div class="label">Costi Totali</div><div class="value" id="summary-costs">${fmt(calc.totalCosts)} EUR</div></div>
+        <div class="summary-item"><div class="label">Margine</div><div class="value ${(calc.marginPct || 0) >= 0 ? 'margin-positive' : 'margin-negative'}" id="summary-margin" style="color: ${(calc.marginPct || 0) >= 0 ? '#86efac' : '#fca5a5'}">${fmtD(calc.marginPct)}%</div></div>
       </div>
     </div>
 
@@ -117,8 +115,8 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
     <div class="section">
       <div class="section-title">Materiale e Attrezzature</div>
       <table>
-        <thead><tr><th>Descrizione</th><th class="text-center">Qty</th><th class="text-right">Costo Unit.</th><th class="text-right">Totale</th></tr></thead>
-        <tbody>${equipmentList.map(e => `<tr><td>${e.desc}</td><td class="text-center">${e.qty}</td><td class="text-right">${fmt(e.costUnit)} EUR</td><td class="text-right font-bold">${fmt(e.qty * e.costUnit)} EUR</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Descrizione</th><th style="color:#999;font-size:0.9em">Fornitore</th><th class="text-center">Qty</th><th class="text-center">Coeff.</th><th class="text-right">Costo Unit.</th><th class="text-right">Totale</th></tr></thead>
+        <tbody>${equipmentList.map((e, i) => `<tr data-eq-row="${i}" data-qty="${e.qty}" data-cost="${e.costUnit}"><td>${e.desc}</td><td style="color:#999;font-size:0.9em">${e.supplier || ''}</td><td class="text-center">${e.qty}</td><td class="text-center"><input type="number" value="${e.coefficient ?? 1}" min="0.1" step="0.1" data-eq-coeff="${i}" style="width:70px;text-align:center;border:1px solid #d0d7de;border-radius:4px;padding:2px 4px;font-size:12px;"></td><td class="text-right">${fmt(e.costUnit)} EUR</td><td class="text-right font-bold" data-eq-total="${i}">${fmt(e.qty * e.costUnit * (e.coefficient ?? 1))} EUR</td></tr>`).join('')}</tbody>
       </table>
     </div>` : ''}
 
@@ -136,10 +134,10 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
       <table>
         <thead><tr><th>Voce</th><th class="text-right">Importo</th><th style="width: 200px">Incidenza</th></tr></thead>
         <tbody>${costBreakdown.map(c => {
-        const pct = calc.totalCosts > 0 ? (c.value / calc.totalCosts * 100) : 0;
-        return `<tr><td>${c.label}</td><td class="text-right font-bold">${fmt(c.value)} EUR</td><td><div style="display:flex;align-items:center;gap:8px"><div class="cost-bar" style="flex:1"><div class="cost-bar-fill" style="width:${pct}%"></div></div><span style="font-size:11px;color:#64748b;min-width:40px;text-align:right">${pct.toFixed(1)}%</span></div></td></tr>`;
-    }).join('')}
-        <tr style="background:${primaryColor};color:#fff"><td class="font-bold">TOTALE COSTI</td><td class="text-right font-bold">${fmt(calc.totalCosts)} EUR</td><td></td></tr>
+    const pct = calc.totalCosts > 0 ? (c.value / calc.totalCosts * 100) : 0;
+    return `<tr><td>${c.label}</td><td class="text-right font-bold">${fmt(c.value)} EUR</td><td><div style="display:flex;align-items:center;gap:8px"><div class="cost-bar" style="flex:1"><div class="cost-bar-fill" style="width:${pct}%"></div></div><span style="font-size:11px;color:#64748b;min-width:40px;text-align:right">${pct.toFixed(1)}%</span></div></td></tr>`;
+  }).join('')}
+        <tr style="background:${primaryColor};color:#fff" id="cost-total-row"><td class="font-bold">TOTALE COSTI</td><td class="text-right font-bold" id="cost-total-value">${fmt(calc.totalCosts)} EUR</td><td></td></tr>
         </tbody>
       </table>
     </div>
@@ -167,29 +165,78 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
     </div>
   </div>
 </div>
+<script>
+(function() {
+  var revenueNet = ${calc.revenueNet || 0};
+  var baseTotalCosts = ${calc.totalCosts || 0};
+  var baseEqCost = ${calc.totalEqCost || 0};
+  var fmt = function(v) { return (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 }); };
+  var fmtD = function(v) { return (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+
+  document.addEventListener('input', function(ev) {
+    var inp = ev.target;
+    if (!inp.dataset || !inp.dataset.eqCoeff) return;
+    var idx = inp.dataset.eqCoeff;
+    var row = document.querySelector('tr[data-eq-row="' + idx + '"]');
+    if (!row) return;
+    var qty = parseFloat(row.dataset.qty) || 0;
+    var cost = parseFloat(row.dataset.cost) || 0;
+    var coeff = parseFloat(inp.value) || 1;
+    var rowTotal = qty * cost * coeff;
+    var totalCell = document.querySelector('td[data-eq-total="' + idx + '"]');
+    if (totalCell) totalCell.textContent = fmt(rowTotal) + ' EUR';
+
+    // Recalc equipment section total
+    var newEqTotal = 0;
+    document.querySelectorAll('tr[data-eq-row]').forEach(function(r) {
+      var q = parseFloat(r.dataset.qty) || 0;
+      var c = parseFloat(r.dataset.cost) || 0;
+      var coeffInput = r.querySelector('input[data-eq-coeff]');
+      var cf = coeffInput ? (parseFloat(coeffInput.value) || 1) : 1;
+      newEqTotal += q * c * cf;
+    });
+
+    // Update totals: replace equipment portion in total costs
+    var newTotalCosts = baseTotalCosts - baseEqCost + newEqTotal;
+    var margin = revenueNet - newTotalCosts;
+    var marginPct = revenueNet > 0 ? (margin / revenueNet * 100) : 0;
+
+    var costEl = document.getElementById('cost-total-value');
+    if (costEl) costEl.textContent = fmt(newTotalCosts) + ' EUR';
+    var sumCosts = document.getElementById('summary-costs');
+    if (sumCosts) sumCosts.textContent = fmt(newTotalCosts) + ' EUR';
+    var sumMargin = document.getElementById('summary-margin');
+    if (sumMargin) {
+      sumMargin.textContent = fmtD(marginPct) + '%';
+      sumMargin.style.color = marginPct >= 0 ? '#86efac' : '#fca5a5';
+    }
+  });
+})();
+</script>
 </body></html>`;
 
-    return html;
+  return html;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function openPDFPreview(html) {
-    const win = window.open('', '_blank');
-    if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 500);
-    }
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  }
 }
 
 export default function ExportPDFButton({ projectData, calc, appConfig, style = {} }) {
-    const handleExport = () => {
-        const html = generateQuotePDF(projectData, calc, appConfig);
-        openPDFPreview(html);
-    };
+  const handleExport = () => {
+    const html = generateQuotePDF(projectData, calc, appConfig);
+    openPDFPreview(html);
+  };
 
-    return (
-        <button onClick={handleExport} style={{ background: 'linear-gradient(135deg, #1B3A5C 0%, #2E86AB 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(27,58,92,0.2)', ...style }}>
-            📄 Esporta PDF
-        </button>
-    );
+  return (
+    <button onClick={handleExport} style={{ background: 'linear-gradient(135deg, #1B3A5C 0%, #2E86AB 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(27,58,92,0.2)', ...style }}>
+      📄 Esporta PDF
+    </button>
+  );
 }
