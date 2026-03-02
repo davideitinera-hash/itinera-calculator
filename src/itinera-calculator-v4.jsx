@@ -239,7 +239,92 @@ const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delOb
   );
 };
 
-// ═══ MAIN COMPONENT ═══
+const EQ_GRID_COLS = "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto";
+const EQ_HEADERS = ["", "Descrizione", "Fornitore", "Qty", "Coeff.", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""];
+
+const EquipmentGrid = ({ items, updateObjList, delObj, showDragHandle = false, showCategoryDropdown = false, getDragProps }) => {
+  const totalCost = items.reduce((s, e) => s + e.cost, 0);
+  const totalRevenue = items.reduce((s, e) => s + e.revenue, 0);
+  const totalMargin = items.reduce((s, e) => s + e.marginEur, 0);
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ display: "grid", gridTemplateColumns: EQ_GRID_COLS, gap: 3, minWidth: 1060, marginBottom: 3, alignItems: "end" }}>
+        {EQ_HEADERS.map((h, i) => {
+          const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
+          const hlSell = h === "Vendita €/pz";
+          const hl = hlCost || hlSell;
+          return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#ffffff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 3 ? "center" : "left", letterSpacing: 0.3 }}>{h}</span>;
+        })}
+      </div>
+      {items.map((e, idx) => {
+        const mColor = e.marginEur > 0 ? (e.marginPct >= 15 ? '#27ae60' : '#e67e22') : e.marginEur < 0 ? '#e74c3c' : '#999';
+        const dragProps = showDragHandle && getDragProps ? getDragProps(idx) : {};
+        return (
+          <div key={e.id} {...dragProps}>
+            <div style={{ display: "grid", gridTemplateColumns: EQ_GRID_COLS, gap: 3, minWidth: 1060, marginBottom: 1, alignItems: "center" }}>
+              {showDragHandle ? <span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span> : <span />}
+              <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
+              <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
+              <div className="eq-col-hl"><Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" vr={{ min: 0, max: 9999 }} /></div>
+              <div className="eq-col-hl"><Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" vr={{ min: 0.1, max: 99 }} /></div>
+              <Inp type="number" value={e.l} onChange={v => updateObjList("eqItems", e.id, "l", v)} align="center" />
+              <Inp type="number" value={e.w} onChange={v => updateObjList("eqItems", e.id, "w", v)} align="center" />
+              <Inp type="number" value={e.h} onChange={v => updateObjList("eqItems", e.id, "h", v)} align="center" />
+              <Inp type="number" value={e.weightKg} onChange={v => updateObjList("eqItems", e.id, "weightKg", v)} align="center" />
+              <div style={{ fontSize: 10, textAlign: "center", color: "#2E86AB", fontWeight: 600 }}>{fmtD2(e.vol)}</div>
+              <div style={{ fontSize: 10, textAlign: "center", color: "#e67e22", fontWeight: 600 }}>{fmt(e.weight)}</div>
+              <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
+              <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
+              <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
+              <X onClick={() => delObj("eqItems", e.id)} />
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: showDragHandle ? 4 : 0, alignItems: "center", flexWrap: "wrap" }}>
+              {showCategoryDropdown && (
+                <select value={e.itemCategory || 'Proprio'} onChange={ev => updateObjList("eqItems", e.id, "itemCategory", ev.target.value)} style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: e.itemCategory === 'Sub-noleggio' ? '#e67e22' : e.itemCategory === 'Acquisto' ? '#8e44ad' : '#2E86AB', background: e.itemCategory === 'Sub-noleggio' ? '#fef3e8' : e.itemCategory === 'Acquisto' ? '#f5eef8' : '#eef6fb' }}>
+                  <option value="Proprio">🔵 Proprio</option>
+                  <option value="Sub-noleggio">🟠 Sub-noleggio</option>
+                  <option value="Acquisto">🟣 Acquisto</option>
+                </select>
+              )}
+              {e.owned && <>
+                <F label="Acquisto €" value={e.purchasePrice} onChange={v => updateObjList("eqItems", e.id, "purchasePrice", v)} w="0.5" />
+                <F label="Utilizzi vita" value={e.totalUses} onChange={v => updateObjList("eqItems", e.id, "totalUses", v)} w="0.4" />
+                <F label="Già usati" value={e.usesUsed} onChange={v => updateObjList("eqItems", e.id, "usesUsed", v)} w="0.4" />
+                <span style={{ fontSize: 9, color: "#888" }}>
+                  Ammort: €{fmtD2(e.depPerUse)}/uso → <strong>€{fmtD2(e.depTotal)}</strong>/ev | ROI: {e.roiEvents} ev ({fmtD(e.roiPaid)}%{e.roiPaid >= 100 ? " ✅" : ""})
+                </span>
+              </>}
+              <span style={{ fontSize: 9, marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, background: mColor + '12', color: mColor, fontWeight: 700, display: 'inline-flex', gap: 8 }}>
+                Margine: <strong>€{fmt(e.marginEur)}</strong>
+                {' | Margine %: '}<strong>{e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'}</strong>
+                {' | Ricarico: '}<strong>{e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}</strong>
+              </span>
+            </div>
+          </div>
+        )
+      })}
+      {items.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: EQ_GRID_COLS, gap: 3, minWidth: 1060, marginTop: 4, paddingTop: 4, borderTop: "1px solid #e0e6ed", alignItems: "center" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#1B3A5C", gridColumn: "span 14" }}>TOTALI</span>
+          <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#555" }}>€{fmt(totalCost)}</div>
+          <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#2E86AB" }}>€{fmt(totalRevenue)}</div>
+          <span></span>
+        </div>
+      )}
+      {items.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4, paddingRight: 4 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: totalMargin >= 0 ? '#27ae60' : '#e74c3c' }}>
+            Margine Tot: €{fmt(totalMargin)}
+            {totalRevenue > 0 ? ` (${fmtD((totalRevenue - totalCost) / totalRevenue * 100)}%)` : ''}
+            {totalCost > 0 ? ` | Ricarico: ${fmtD((totalRevenue - totalCost) / totalCost * 100)}%` : ''}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
 export default function ItineraV4({ projectId, onBack }) {
   const [sec, setSec] = useState({});
   const tgl = k => setSec(p => ({ ...p, [k]: p[k] === false ? true : (p[k] === true ? false : false) }));
@@ -1176,79 +1261,7 @@ export default function ItineraV4({ projectId, onBack }) {
                 .eq-col-hl input { border: 2px solid #2E86AB !important; background: #f0f7ff !important; font-weight: 700 !important; color: #1B3A5C !important; }
                 .eq-col-sell input { border: 2px solid #27ae60 !important; background: #f0fff5 !important; font-weight: 700 !important; color: #1a5c2e !important; }
               `}</style>
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 1060, marginBottom: 3, alignItems: "end" }}>
-                  {["", "Descrizione", "Fornitore", "Qty", "Coeff.", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""].map((h, i) => {
-                    const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
-                    const hlSell = h === "Vendita €/pz";
-                    const hl = hlCost || hlSell;
-                    return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#ffffff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 3 ? "center" : "left", letterSpacing: 0.3 }}>{h}</span>;
-                  })}
-                </div>
-                {calc.eqCalcs.map((e, idx) => {
-                  const mColor = e.marginEur > 0 ? (e.marginPct >= 15 ? '#27ae60' : '#e67e22') : e.marginEur < 0 ? '#e74c3c' : '#999';
-                  return (
-                    <div key={e.id} {...getDragPropsEq(idx)}>
-                      <div style={{ display: "grid", gridTemplateColumns: "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 1060, marginBottom: 1, alignItems: "center" }}>
-                        <span style={{ cursor: 'grab', color: '#cbd5e1', fontSize: 16, userSelect: 'none', padding: '0 4px' }} title="Trascina per riordinare">⠿</span>
-                        <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
-                        <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
-                        <div className="eq-col-hl"><Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" vr={{ min: 0, max: 9999 }} /></div>
-                        <div className="eq-col-hl"><Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" vr={{ min: 0.1, max: 99 }} /></div>
-                        <Inp type="number" value={e.l} onChange={v => updateObjList("eqItems", e.id, "l", v)} align="center" />
-                        <Inp type="number" value={e.w} onChange={v => updateObjList("eqItems", e.id, "w", v)} align="center" />
-                        <Inp type="number" value={e.h} onChange={v => updateObjList("eqItems", e.id, "h", v)} align="center" />
-                        <Inp type="number" value={e.weightKg} onChange={v => updateObjList("eqItems", e.id, "weightKg", v)} align="center" />
-                        <div style={{ fontSize: 10, textAlign: "center", color: "#2E86AB", fontWeight: 600 }}>{fmtD2(e.vol)}</div>
-                        <div style={{ fontSize: 10, textAlign: "center", color: "#e67e22", fontWeight: 600 }}>{fmt(e.weight)}</div>
-                        <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
-                        <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
-                        <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
-                        <X onClick={() => delObj("eqItems", e.id)} />
-                      </div>
-                      <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: 4, alignItems: "center", flexWrap: "wrap" }}>
-                        <select value={e.itemCategory || 'Proprio'} onChange={ev => updateObjList("eqItems", e.id, "itemCategory", ev.target.value)} style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: e.itemCategory === 'Sub-noleggio' ? '#e67e22' : e.itemCategory === 'Acquisto' ? '#8e44ad' : '#2E86AB', background: e.itemCategory === 'Sub-noleggio' ? '#fef3e8' : e.itemCategory === 'Acquisto' ? '#f5eef8' : '#eef6fb' }}>
-                          <option value="Proprio">🔵 Proprio</option>
-                          <option value="Sub-noleggio">🟠 Sub-noleggio</option>
-                          <option value="Acquisto">🟣 Acquisto</option>
-                        </select>
-                        {e.owned && <>
-                          <F label="Acquisto €" value={e.purchasePrice} onChange={v => updateObjList("eqItems", e.id, "purchasePrice", v)} w="0.5" />
-                          <F label="Utilizzi vita" value={e.totalUses} onChange={v => updateObjList("eqItems", e.id, "totalUses", v)} w="0.4" />
-                          <F label="Già usati" value={e.usesUsed} onChange={v => updateObjList("eqItems", e.id, "usesUsed", v)} w="0.4" />
-                          <span style={{ fontSize: 9, color: "#888" }}>
-                            Ammort: €{fmtD2(e.depPerUse)}/uso → <strong>€{fmtD2(e.depTotal)}</strong>/ev | ROI: {e.roiEvents} ev ({fmtD(e.roiPaid)}%{e.roiPaid >= 100 ? " ✅" : ""})
-                          </span>
-                        </>}
-                        <span style={{ fontSize: 9, marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, background: mColor + '12', color: mColor, fontWeight: 700, display: 'inline-flex', gap: 8 }}>
-                          Margine: <strong>€{fmt(e.marginEur)}</strong>
-                          {' | Margine %: '}<strong>{e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'}</strong>
-                          {' | Ricarico: '}<strong>{e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-                {calc.eqCalcs.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 1060, marginTop: 4, paddingTop: 4, borderTop: "1px solid #e0e6ed", alignItems: "center" }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "#1B3A5C", gridColumn: "span 14" }}>TOTALI</span>
-                    <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#555" }}>€{fmt(calc.totalEqCost)}</div>
-                    <div style={{ fontSize: 10, textAlign: "right", fontWeight: 700, color: "#2E86AB" }}>€{fmt(calc.totalEqRevenue)}</div>
-                    <span></span>
-                  </div>
-                )}
-                {calc.eqCalcs.length > 0 && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 4, paddingRight: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: calc.totalEqMargin >= 0 ? '#27ae60' : '#e74c3c' }}>
-                      Margine Tot: €{fmt(calc.totalEqMargin)}
-                      {calc.totalEqRevenue > 0 ? ` (${fmtD((calc.totalEqRevenue - calc.totalEqCost) / calc.totalEqRevenue * 100)}%)` : ''}
-                      {calc.totalEqCost > 0 ? ` | Ricarico: ${fmtD((calc.totalEqRevenue - calc.totalEqCost) / calc.totalEqCost * 100)}%` : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <EquipmentGrid items={calc.eqCalcs} updateObjList={updateObjList} delObj={delObj} showDragHandle showCategoryDropdown getDragProps={getDragPropsEq} />
               <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0 })} s>+ Materiale</Btn>
               <Sub text={`Volume: ${fmtD2(calc.totalVol)}m³ → Effettivo (÷0.70): ${fmtD(calc.totalVolEff)}m³ | Peso: ${fmt(calc.totalWeight)}kg | Min: ${calc.recVeh.name} | Ammort: €${fmt(calc.totalDepreciation)}`} />
               {calc.weightOverVol && <Warn text={`⚠️ PESO: ${fmt(calc.totalWeight)}kg supera portata veicolo per volume. Serve veicolo più grande o più viaggi!`} />}
@@ -1258,78 +1271,16 @@ export default function ItineraV4({ projectId, onBack }) {
 
           {/* ═══ SUB-NOLEGGI (Filtered Smart View) ═══ */}
           <div id="section-subnoleggi">
-            <Card title={`Sub-noleggi | Costo €${fmt(calc.catStats[1].cost)} | Ricavo €${fmt(calc.catStats[1].rev)} | ${calc.catStats[1].count} items`} icon="🤝" open={isO("sn")} onToggle={() => tgl("sn")}>
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, marginBottom: 3, alignItems: "end" }}>
-                  {["Descrizione", "Fornitore", "Qty", "Coeff.", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""].map((h, i) => {
-                    const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
-                    const hlSell = h === "Vendita €/pz";
-                    const hl = hlCost || hlSell;
-                    return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#fff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>;
-                  })}
-                </div>
-                {calc.eqCalcs.filter(e => e.itemCategory === 'Sub-noleggio').map(e => {
-                  const mColor = e.marginEur > 0 ? '#27ae60' : e.marginEur < 0 ? '#e74c3c' : '#999';
-                  return (
-                    <div key={e.id} style={{ marginBottom: 4 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, alignItems: "center" }}>
-                        <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
-                        <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
-                        <Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" />
-                        <Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" />
-                        <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
-                        <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
-                        <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
-                        <X onClick={() => delObj("eqItems", e.id)} />
-                      </div>
-                      <div style={{ fontSize: 9, padding: '2px 8px', color: mColor, fontWeight: 600 }}>
-                        Margine: €{fmt(e.marginEur)} | Margine %: {e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'} | Ricarico: {e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <Card title={`Sub-noleggi | Costo €${fmt(calc.catStats[1].cost)} | Ricavo €${fmt(calc.catStats[1].rev)} | Margine €${fmt(calc.catStats[1].rev - calc.catStats[1].cost)} | ${calc.catStats[1].count} items`} icon="🤝" open={isO("sn")} onToggle={() => tgl("sn")}>
+              <EquipmentGrid items={calc.eqCalcs.filter(e => e.itemCategory === 'Sub-noleggio')} updateObjList={updateObjList} delObj={delObj} />
               <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0, itemCategory: 'Sub-noleggio' })} s>+ Sub-noleggio</Btn>
             </Card>
           </div>
 
           {/* ═══ ACQUISTI (Filtered Smart View) ═══ */}
           <div id="section-acquisti">
-            <Card title={`Acquisti | Costo €${fmt(calc.catStats[2].cost)} | Ricavo €${fmt(calc.catStats[2].rev)} | ${calc.catStats[2].count} items`} icon="🛒" open={isO("aq")} onToggle={() => tgl("aq")}>
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, marginBottom: 3, alignItems: "end" }}>
-                  {["Descrizione", "Fornitore", "Qty", "Coeff.", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""].map((h, i) => {
-                    const hlCost = ["Qty", "Coeff.", "€/pz"].includes(h);
-                    const hlSell = h === "Vendita €/pz";
-                    const hl = hlCost || hlSell;
-                    return <span key={h + i} style={{ fontSize: 8, fontWeight: hl ? 800 : 600, color: hl ? "#fff" : "#999", background: hlSell ? "#27ae60" : hlCost ? "#2E86AB" : "transparent", borderRadius: hl ? "4px 4px 0 0" : 0, padding: hl ? "8px 4px" : "0 0 2px", textTransform: "uppercase", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>;
-                  })}
-                </div>
-                {calc.eqCalcs.filter(e => e.itemCategory === 'Acquisto').map(e => {
-                  const mColor = e.marginEur > 0 ? '#27ae60' : e.marginEur < 0 ? '#e74c3c' : '#999';
-                  return (
-                    <div key={e.id} style={{ marginBottom: 4 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.9fr 0.4fr 0.4fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto", gap: 3, minWidth: 780, alignItems: "center" }}>
-                        <Inp value={e.desc} onChange={v => updateObjList("eqItems", e.id, "desc", v)} />
-                        <Inp value={e.supplier || ''} onChange={v => updateObjList("eqItems", e.id, "supplier", v)} ph="Fornitore" />
-                        <Inp type="number" value={e.qty} onChange={v => updateObjList("eqItems", e.id, "qty", Math.round(v))} align="center" />
-                        <Inp type="number" value={e.coefficient ?? 1} onChange={v => updateObjList("eqItems", e.id, "coefficient", v)} align="center" />
-                        <div className="eq-col-hl"><Inp type="number" value={e.costUnit} onChange={v => updateObjList("eqItems", e.id, "costUnit", v)} align="center" /></div>
-                        <div className="eq-col-sell"><Inp type="number" value={e.sellPrice || 0} onChange={v => updateObjList("eqItems", e.id, "sellPrice", v)} align="center" /></div>
-                        <div style={{ fontSize: 10, textAlign: "center", color: (e.coefficient ?? 1) !== 1 ? '#e67e22' : '#ccc' }}>{(e.coefficient ?? 1) !== 1 ? `×${fmtD(e.coefficient, 2)}` : ''}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>€{fmt(e.cost)}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", color: "#2E86AB" }}>€{fmt(e.revenue)}</div>
-                        <X onClick={() => delObj("eqItems", e.id)} />
-                      </div>
-                      <div style={{ fontSize: 9, padding: '2px 8px', color: mColor, fontWeight: 600 }}>
-                        Margine: €{fmt(e.marginEur)} | Margine %: {e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A'} | Ricarico: {e.markupItemPct === Infinity ? '∞' : e.markupItemPct !== null ? `${fmtD(e.markupItemPct)}%` : 'N/A'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <Card title={`Acquisti | Costo €${fmt(calc.catStats[2].cost)} | Ricavo €${fmt(calc.catStats[2].rev)} | Margine €${fmt(calc.catStats[2].rev - calc.catStats[2].cost)} | ${calc.catStats[2].count} items`} icon="🛒" open={isO("aq")} onToggle={() => tgl("aq")}>
+              <EquipmentGrid items={calc.eqCalcs.filter(e => e.itemCategory === 'Acquisto')} updateObjList={updateObjList} delObj={delObj} />
               <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0, itemCategory: 'Acquisto' })} s>+ Acquisto</Btn>
             </Card>
           </div>
