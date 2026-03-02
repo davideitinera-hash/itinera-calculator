@@ -1,9 +1,15 @@
+import { useState, useRef, useEffect } from 'react';
+
+const fmt = v => (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 });
+const fmtD = v => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// ═══════════════════════════════════════════════════════════════
+// 1. CLIENT-FACING PDF (No costs, margins, suppliers)
+// ═══════════════════════════════════════════════════════════════
 // eslint-disable-next-line react-refresh/only-export-components
-export function generateQuotePDF(projectData, calc, appConfig) {
+export function generatePDFQuote(projectData, calc, appConfig) {
   const d = projectData;
   const branding = appConfig?.branding || {};
-  const fmt = v => (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 });
-  const fmtD = v => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const today = new Date().toLocaleDateString('it-IT');
   const eventDate = d.eventDate ? new Date(d.eventDate).toLocaleDateString('it-IT') : 'Da definire';
 
@@ -17,21 +23,22 @@ export function generateQuotePDF(projectData, calc, appConfig) {
   const showWatermark = branding.pdfWatermark && d.status === 'draft';
   const watermarkText = branding.pdfWatermarkText || 'BOZZA';
 
-  const costBreakdown = [
-    { label: 'Materiale e Attrezzature', value: calc.totalEquipment || 0 },
-    { label: 'Trasporto', value: calc.totalTransport || 0 },
-    { label: 'Personale', value: (calc.totalIntStaff || 0) + (calc.totalExtStaff || 0) },
-    { label: 'Sub-noleggi', value: calc.totalSubRentals || 0 },
-    { label: 'Acquisti', value: calc.totalPurchases || 0 },
-    { label: 'Magazzino', value: calc.warehouseCost || 0 },
-    { label: 'Pianificazione', value: calc.planningCost || 0 },
-    { label: 'Vitto e Alloggio', value: calc.mealAccomCost || 0 },
-    { label: 'Costi Analitici', value: calc.totalAnalytics || 0 },
-    { label: 'Contingency', value: calc.contingencyCost || 0 },
-  ].filter(c => c.value > 0);
+  // Equipment — CLIENT view: description, qty, sell price, total sell
+  const equipmentList = (calc.eqCalcs || []).filter(e => e.desc && (e.sellPrice || 0) > 0);
+  const totalEqSell = equipmentList.reduce((s, e) => s + e.revenue, 0);
 
-  const equipmentList = (d.eqItems || []).filter(e => e.desc);
-  const transportList = (d.legs || []).filter(l => l.desc || l.route);
+  // Transport — CLIENT view: description, route, sell price
+  const transportList = (calc.legCalcs || []).filter(l => (l.desc || l.route) && (l.sellPrice || 0) > 0);
+  const totalTransportSell = transportList.reduce((s, l) => s + l.sellPrice, 0);
+
+  // Staff — CLIENT view: role, sell total
+  const staffList = [...(calc.intCalcs || []), ...(calc.extCalcs || [])].filter(s => s.role && (s.sellTotal || 0) > 0);
+  const whSell = d.whSellTotal || 0;
+  const totalStaffSell = staffList.reduce((s, r) => s + (r.sellTotal || 0), 0) + whSell;
+
+  // Total Quote
+  const totalQuote = totalEqSell + totalTransportSell + totalStaffSell;
+
   const phases = (d.phases || []).filter(p => p.phase);
 
   const html = `<!DOCTYPE html>
@@ -64,21 +71,16 @@ export function generateQuotePDF(projectData, calc, appConfig) {
   .text-center { text-align: center; }
   .font-bold { font-weight: 700; }
   
-  .summary-box { background: linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%); color: #fff; border-radius: 12px; padding: 24px; margin: 24px 0; }
-  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: center; }
-  .summary-item .label { font-size: 10px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
-  .summary-item .value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+  .total-box { background: linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%); color: #fff; border-radius: 12px; padding: 24px 32px; margin: 24px 0; display: flex; justify-content: space-between; align-items: center; }
+  .total-label { font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+  .total-value { font-size: 32px; font-weight: 800; }
   
-  .cost-bar { height: 6px; background: #f1f5f9; border-radius: 3px; margin-top: 4px; overflow: hidden; }
-  .cost-bar-fill { height: 100%; border-radius: 3px; background: ${accentColor}; }
+  .subtotal-row { background: #f1f5f9 !important; font-weight: 700; }
   
   .footer { padding: 20px 40px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; }
   .legal { background: #f8fafc; padding: 16px 20px; border-radius: 8px; font-size: 11px; color: #64748b; line-height: 1.8; margin-top: 16px; }
   
   .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 120px; font-weight: 800; color: rgba(220,38,38,0.06); letter-spacing: 20px; pointer-events: none; z-index: 0; }
-  
-  .margin-positive { color: #16a34a; }
-  .margin-negative { color: #dc2626; }
   
   @media print {
     .page { width: 100%; min-height: auto; }
@@ -103,20 +105,14 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
   </div>
   
   <div class="content">
-    <div class="summary-box">
-      <div class="summary-grid">
-        <div class="summary-item"><div class="label">Ricavo Netto</div><div class="value">${fmt(calc.revenueNet)} EUR</div></div>
-        <div class="summary-item"><div class="label">Costi Totali</div><div class="value" id="summary-costs">${fmt(calc.totalCosts)} EUR</div></div>
-        <div class="summary-item"><div class="label">Margine</div><div class="value ${(calc.marginPct || 0) >= 0 ? 'margin-positive' : 'margin-negative'}" id="summary-margin" style="color: ${(calc.marginPct || 0) >= 0 ? '#86efac' : '#fca5a5'}">${fmtD(calc.marginPct)}%</div></div>
-      </div>
-    </div>
-
     ${equipmentList.length > 0 ? `
     <div class="section">
       <div class="section-title">Materiale e Attrezzature</div>
       <table>
-        <thead><tr><th>Descrizione</th><th style="color:#999;font-size:0.9em">Fornitore</th><th class="text-center">Qty</th><th class="text-center">Coeff.</th><th class="text-right">Costo Unit.</th><th class="text-right">Totale</th></tr></thead>
-        <tbody>${equipmentList.map((e, i) => `<tr data-eq-row="${i}" data-qty="${e.qty}" data-cost="${e.costUnit}"><td>${e.desc}</td><td style="color:#999;font-size:0.9em">${e.supplier || ''}</td><td class="text-center">${e.qty}</td><td class="text-center"><input type="number" value="${e.coefficient ?? 1}" min="0.1" step="0.1" data-eq-coeff="${i}" style="width:70px;text-align:center;border:1px solid #d0d7de;border-radius:4px;padding:2px 4px;font-size:12px;"></td><td class="text-right">${fmt(e.costUnit)} EUR</td><td class="text-right font-bold" data-eq-total="${i}">${fmt(e.qty * e.costUnit * (e.coefficient ?? 1))} EUR</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Descrizione</th><th class="text-center">Qty</th><th class="text-center">Coeff.</th><th class="text-right">Prezzo Unit.</th><th class="text-right">Totale</th></tr></thead>
+        <tbody>${equipmentList.map(e => `<tr><td>${e.desc}</td><td class="text-center">${e.qty}</td><td class="text-center">${fmtD(e.coefficient ?? 1)}</td><td class="text-right">${fmt(e.sellPrice)} €</td><td class="text-right font-bold">${fmt(e.revenue)} €</td></tr>`).join('')}
+        <tr class="subtotal-row"><td colspan="4">Subtotale Materiale</td><td class="text-right font-bold">${fmt(totalEqSell)} €</td></tr>
+        </tbody>
       </table>
     </div>` : ''}
 
@@ -124,23 +120,25 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
     <div class="section">
       <div class="section-title">Trasporto</div>
       <table>
-        <thead><tr><th>Tratta</th><th>Percorso</th><th class="text-center">Veicoli</th><th class="text-right">Costo</th></tr></thead>
-        <tbody>${transportList.map(l => `<tr><td>${l.desc || '-'}</td><td>${l.route || 'Custom'}</td><td class="text-center">${l.nVeh || 1}</td><td class="text-right font-bold">${fmt(l.rentalDay * l.rentalDays)} EUR</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Descrizione</th><th>Tratta</th><th class="text-center">N° Veicoli</th><th class="text-right">Importo</th></tr></thead>
+        <tbody>${transportList.map(l => `<tr><td>${l.desc || '-'}</td><td>${l.route || '-'}</td><td class="text-center">${l.nVeh || 1}</td><td class="text-right font-bold">${fmt(l.sellPrice)} €</td></tr>`).join('')}
+        <tr class="subtotal-row"><td colspan="3">Subtotale Trasporto</td><td class="text-right font-bold">${fmt(totalTransportSell)} €</td></tr>
+        </tbody>
       </table>
     </div>` : ''}
 
+    ${(staffList.length > 0 || whSell > 0) ? `
     <div class="section">
-      <div class="section-title">Riepilogo Costi</div>
+      <div class="section-title">Personale</div>
       <table>
-        <thead><tr><th>Voce</th><th class="text-right">Importo</th><th style="width: 200px">Incidenza</th></tr></thead>
-        <tbody>${costBreakdown.map(c => {
-    const pct = calc.totalCosts > 0 ? (c.value / calc.totalCosts * 100) : 0;
-    return `<tr><td>${c.label}</td><td class="text-right font-bold">${fmt(c.value)} EUR</td><td><div style="display:flex;align-items:center;gap:8px"><div class="cost-bar" style="flex:1"><div class="cost-bar-fill" style="width:${pct}%"></div></div><span style="font-size:11px;color:#64748b;min-width:40px;text-align:right">${pct.toFixed(1)}%</span></div></td></tr>`;
-  }).join('')}
-        <tr style="background:${primaryColor};color:#fff" id="cost-total-row"><td class="font-bold">TOTALE COSTI</td><td class="text-right font-bold" id="cost-total-value">${fmt(calc.totalCosts)} EUR</td><td></td></tr>
+        <thead><tr><th>Ruolo</th><th class="text-center">N°</th><th class="text-right">Importo</th></tr></thead>
+        <tbody>
+        ${whSell > 0 ? `<tr><td>Magazzino (${d.whCount}p)</td><td class="text-center">${d.whCount}</td><td class="text-right font-bold">${fmt(whSell)} €</td></tr>` : ''}
+        ${staffList.map(s => `<tr><td>${s.role}</td><td class="text-center">${s.count}</td><td class="text-right font-bold">${fmt(s.sellTotal)} €</td></tr>`).join('')}
+        <tr class="subtotal-row"><td colspan="2">Subtotale Personale</td><td class="text-right font-bold">${fmt(totalStaffSell)} €</td></tr>
         </tbody>
       </table>
-    </div>
+    </div>` : ''}
 
     ${phases.length > 0 ? `
     <div class="section">
@@ -150,6 +148,11 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
         <tbody>${phases.map(p => `<tr><td class="font-bold">${p.phase}</td><td class="text-center">${p.crew}</td><td class="text-center">${p.hours}</td><td style="color:#64748b">${p.notes || ''}</td></tr>`).join('')}</tbody>
       </table>
     </div>` : ''}
+
+    <div class="total-box">
+      <div class="total-label">Totale Preventivo</div>
+      <div class="total-value">${fmt(totalQuote)} €</div>
+    </div>
 
     ${(legalNotes || paymentTerms) ? `
     <div class="legal">
@@ -165,54 +168,6 @@ ${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
     </div>
   </div>
 </div>
-<script>
-(function() {
-  var revenueNet = ${calc.revenueNet || 0};
-  var baseTotalCosts = ${calc.totalCosts || 0};
-  var baseEqCost = ${calc.totalEqCost || 0};
-  var fmt = function(v) { return (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 }); };
-  var fmtD = function(v) { return (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-
-  document.addEventListener('input', function(ev) {
-    var inp = ev.target;
-    if (!inp.dataset || !inp.dataset.eqCoeff) return;
-    var idx = inp.dataset.eqCoeff;
-    var row = document.querySelector('tr[data-eq-row="' + idx + '"]');
-    if (!row) return;
-    var qty = parseFloat(row.dataset.qty) || 0;
-    var cost = parseFloat(row.dataset.cost) || 0;
-    var coeff = parseFloat(inp.value) || 1;
-    var rowTotal = qty * cost * coeff;
-    var totalCell = document.querySelector('td[data-eq-total="' + idx + '"]');
-    if (totalCell) totalCell.textContent = fmt(rowTotal) + ' EUR';
-
-    // Recalc equipment section total
-    var newEqTotal = 0;
-    document.querySelectorAll('tr[data-eq-row]').forEach(function(r) {
-      var q = parseFloat(r.dataset.qty) || 0;
-      var c = parseFloat(r.dataset.cost) || 0;
-      var coeffInput = r.querySelector('input[data-eq-coeff]');
-      var cf = coeffInput ? (parseFloat(coeffInput.value) || 1) : 1;
-      newEqTotal += q * c * cf;
-    });
-
-    // Update totals: replace equipment portion in total costs
-    var newTotalCosts = baseTotalCosts - baseEqCost + newEqTotal;
-    var margin = revenueNet - newTotalCosts;
-    var marginPct = revenueNet > 0 ? (margin / revenueNet * 100) : 0;
-
-    var costEl = document.getElementById('cost-total-value');
-    if (costEl) costEl.textContent = fmt(newTotalCosts) + ' EUR';
-    var sumCosts = document.getElementById('summary-costs');
-    if (sumCosts) sumCosts.textContent = fmt(newTotalCosts) + ' EUR';
-    var sumMargin = document.getElementById('summary-margin');
-    if (sumMargin) {
-      sumMargin.textContent = fmtD(marginPct) + '%';
-      sumMargin.style.color = marginPct >= 0 ? '#86efac' : '#fca5a5';
-    }
-  });
-})();
-</script>
 </body></html>`;
 
   return html;
@@ -228,15 +183,170 @@ export function openPDFPreview(html) {
   }
 }
 
-export default function ExportPDFButton({ projectData, calc, appConfig, style = {} }) {
-  const handleExport = () => {
-    const html = generateQuotePDF(projectData, calc, appConfig);
+// ═══════════════════════════════════════════════════════════════
+// 2. INTERNAL CSV (Full financial data dump)
+// ═══════════════════════════════════════════════════════════════
+// eslint-disable-next-line react-refresh/only-export-components
+export function generateInternalCSV(projectData, calc) {
+  const d = projectData;
+  const esc = v => {
+    const s = String(v ?? '').replace(/"/g, '""');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+  };
+  const n = v => (v || 0).toFixed(2);
+
+  let csv = '';
+
+  // Project info
+  csv += `PROGETTO,${esc(d.projectName)}\n`;
+  csv += `CLIENTE,${esc(d.clientName)}\n`;
+  csv += `DATA EVENTO,${esc(d.eventDate)}\n`;
+  csv += `CODICE,${esc(d.projectCode)}\n`;
+  csv += `RICAVO LORDO,${n(d.revenueGross)}\n`;
+  csv += `RICAVO NETTO,${n(calc.revenueNet)}\n`;
+  csv += `COSTI TOTALI,${n(calc.totalCostsAll)}\n`;
+  csv += `MARGINE NETTO,${n(calc.margin)}\n`;
+  csv += `MARGINE %,${n(calc.marginPct)}\n\n`;
+
+  // Equipment
+  csv += `--- MATERIALE ---\n`;
+  csv += `Categoria,Descrizione,Fornitore,Qty,Coeff,L(m),W(m),H(m),Kg/pz,M³,Kg Tot,Costo Unit,Vendita Unit,Costo Tot,Ricavo Tot,Margine €,Margine %,Ricarico %\n`;
+  (calc.eqCalcs || []).forEach(e => {
+    const markup = e.cost > 0 ? ((e.revenue - e.cost) / e.cost * 100) : 0;
+    csv += `${esc(e.itemCategory || 'Proprio')},${esc(e.desc)},${esc(e.supplier)},${e.qty},${n(e.coefficient ?? 1)},${n(e.l)},${n(e.w)},${n(e.h)},${n(e.weightKg)},${n(e.vol)},${n(e.weight)},${n(e.costUnit)},${n(e.sellPrice || 0)},${n(e.cost)},${n(e.revenue)},${n(e.marginEur)},${e.marginPct !== null ? n(e.marginPct) : 'N/A'},${n(markup)}\n`;
+  });
+  csv += `TOTALE MATERIALE,,,,,,,,,,${n(calc.totalVol)},${n(calc.totalWeight)},,,${n(calc.totalEqCost)},${n(calc.totalEqRevenue)},${n(calc.totalEqMargin)}\n\n`;
+
+  // Transport
+  csv += `--- TRASPORTI ---\n`;
+  csv += `Descrizione,Tratta,Veicolo,N° Veicoli,Km,Carburante €,Pedaggi €,Nolo €,Costo Tot €,Vendita €,Margine €,Margine %\n`;
+  (calc.legCalcs || []).forEach(l => {
+    csv += `${esc(l.desc)},${esc(l.route)},${esc(l.vName)},${l.nVeh},${n(l.km)},${n(l.fuel)},${n(l.toll)},${n(l.rQ)},${n(l.total)},${n(l.sellPrice)},${n(l.legMargin)},${l.legMarginPct !== null ? n(l.legMarginPct) : 'N/A'}\n`;
+  });
+  csv += `TOTALE TRASPORTI,,,,,,,,,${n(calc.totalTransport)},${n(calc.totalTransportRevenue)},${n(calc.totalTransportMargin)}\n\n`;
+
+  // Staff
+  csv += `--- PERSONALE ---\n`;
+  csv += `Tipo,Ruolo,N°,€/h,Ore Ord,Ore Str,Ore Fest,Ore Nott,Costo Tot €,Vendita €,Margine €\n`;
+  csv += `Magazzino,Magazziniere,${d.whCount},${n(d.whRate)},${n(d.whHLoad + d.whHUnload)},,,,,${n(calc.totalWh)},${n(d.whSellTotal || 0)},${n((d.whSellTotal || 0) - calc.totalWh)}\n`;
+  (calc.intCalcs || []).forEach(s => {
+    csv += `Interno,${esc(s.role)},${s.count},${n(s.costHour)},${n(s.hOrd)},${n(s.hStr)},${n(s.hFest)},${n(s.hNott)},${n(s.total)},${n(s.sellTotal || 0)},${n((s.sellTotal || 0) - s.total)}\n`;
+  });
+  (calc.extCalcs || []).forEach(s => {
+    csv += `Esterno,${esc(s.role)},${s.count},${n(s.costHour)},${n(s.hOrd)},${n(s.hStr)},${n(s.hFest)},${n(s.hNott)},${n(s.total)},${n(s.sellTotal || 0)},${n((s.sellTotal || 0) - s.total)}\n`;
+  });
+  csv += `TOTALE STAFF,,,,,,,,${n(calc.totalAllStaff)},${n(calc.totalStaffRevenue)},${n(calc.totalStaffMargin)}\n\n`;
+
+  // Other costs
+  csv += `--- ALTRI COSTI ---\n`;
+  csv += `Voce,Importo €\n`;
+  csv += `Pianificazione,${n(calc.totalPlanCost)}\n`;
+  csv += `Vitto & Alloggio,${n(calc.totalAccom)}\n`;
+  csv += `Costi Analitici,${n(calc.totalAn)}\n`;
+  csv += `Danni & Extra,${n(calc.totalDmg)}\n`;
+  csv += `Varie,${n(calc.totalMisc)}\n`;
+  csv += `Ammortamenti,${n(calc.totalDepreciation)}\n`;
+  csv += `Contingency,${n(calc.contingencyAmt)}\n`;
+  csv += `Costo Finanziario,${n(calc.financialCost)}\n`;
+
+  return csv;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function downloadCSV(csv, filename) {
+  const bom = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. EXPORT DROPDOWN COMPONENT
+// ═══════════════════════════════════════════════════════════════
+export default function ExportDropdown({ projectData, calc, appConfig, style = {} }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handlePDF = () => {
+    setOpen(false);
+    const html = generatePDFQuote(projectData, calc, appConfig);
     openPDFPreview(html);
   };
 
+  const handleCSV = () => {
+    setOpen(false);
+    const csv = generateInternalCSV(projectData, calc);
+    const name = (projectData.projectCode || projectData.projectName || 'export').replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadCSV(csv, `${name}_dati_tecnici.csv`);
+  };
+
   return (
-    <button onClick={handleExport} style={{ background: 'linear-gradient(135deg, #1B3A5C 0%, #2E86AB 100%)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(27,58,92,0.2)', ...style }}>
-      📄 Esporta PDF
-    </button>
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: 'linear-gradient(135deg, #1B3A5C 0%, #2E86AB 100%)',
+          color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6,
+          padding: '6px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 6,
+          boxShadow: '0 2px 8px rgba(27,58,92,0.2)', transition: 'all 0.2s',
+        }}
+      >
+        📥 Esporta <span style={{ fontSize: 8, opacity: 0.8 }}>▼</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, marginTop: 4,
+          background: '#fff', borderRadius: 8, boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+          border: '1px solid #e2e8f0', minWidth: 260, zIndex: 999, overflow: 'hidden',
+        }}>
+          <button
+            onClick={handlePDF}
+            style={{
+              width: '100%', padding: '12px 16px', border: 'none', background: 'none',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+              fontSize: 13, fontWeight: 600, color: '#1B3A5C', textAlign: 'left',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            <span style={{ fontSize: 20 }}>📄</span>
+            <div>
+              <div>Preventivo Cliente (PDF)</div>
+              <div style={{ fontSize: 10, color: '#888', fontWeight: 400 }}>Solo prezzi di vendita, nessun costo interno</div>
+            </div>
+          </button>
+          <div style={{ height: 1, background: '#e2e8f0' }} />
+          <button
+            onClick={handleCSV}
+            style={{
+              width: '100%', padding: '12px 16px', border: 'none', background: 'none',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+              fontSize: 13, fontWeight: 600, color: '#1B3A5C', textAlign: 'left',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f0fff5'}
+            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            <span style={{ fontSize: 20 }}>📊</span>
+            <div>
+              <div>Dati Tecnici & Finanziari (CSV)</div>
+              <div style={{ fontSize: 10, color: '#888', fontWeight: 400 }}>Export completo: costi, margini, fornitori, volumi</div>
+            </div>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

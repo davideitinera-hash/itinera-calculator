@@ -5,7 +5,7 @@ import { supabase } from './lib/supabaseClient';
 import { useResponsive } from './hooks/useResponsive';
 import { useDragDrop } from './hooks/useDragDrop';
 import Breadcrumb from './components/Breadcrumb';
-import ExportPDFButton from './components/ExportPDF';
+import ExportDropdown from './components/ExportPDF';
 import RentmanImportModal from './components/RentmanImportModal';
 import SyncHistoryModal from './components/SyncHistoryModal';
 import SyncDiffModal from './components/SyncDiffModal';
@@ -1138,7 +1138,7 @@ export default function ItineraV4({ projectId, onBack }) {
             )}
           </button>
           <button onClick={() => setShowSyncHistory(true)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, padding: '6px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }} title="Cronologia Sync">🕐</button>
-          <ExportPDFButton projectData={d} calc={calc} appConfig={appConfig} style={{ padding: '6px 14px', fontSize: 11, borderRadius: 6 }} />
+          <ExportDropdown projectData={d} calc={calc} appConfig={appConfig} />
         </div>
       </div>
       <div style={{ padding: isMobile ? '4px 12px' : '4px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0' }}>
