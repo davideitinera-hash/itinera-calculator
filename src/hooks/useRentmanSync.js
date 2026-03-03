@@ -53,7 +53,7 @@ export function useRentmanSync() {
 
     const mapToCalculator = useCallback((rentmanData) => {
         if (!rentmanData) return null;
-        const { project, equipment, costs, rentmanTotals, subrentals: rawSubrentals } = rentmanData;
+        const { project, equipment, costs, rentmanTotals, subrentals: rawSubrentals, subprojects: rawSubprojects } = rentmanData;
 
         const projectFields = {};
         if (project) {
@@ -82,6 +82,7 @@ export function useRentmanSync() {
                 totalUses: 1,
                 usesUsed: 0,
                 rentmanId: e.rentmanId,
+                subprojectId: e.subprojectId || null,
                 _group: e.group || '',
                 _remarks: e.remarks || '',
             };
@@ -136,6 +137,7 @@ export function useRentmanSync() {
                 qty: c.quantity || 1,
                 vatIncl: false,
                 rentmanId: c.rentmanId,
+                subprojectId: c.subprojectId || null,
                 _remark: c.remark || '',
             };
             switch (c.category) {
@@ -149,7 +151,7 @@ export function useRentmanSync() {
                     purchases.push(item);
                     break;
                 default:
-                    miscCosts.push({ desc: c.desc || '', cost: c.cost || 0, qty: c.quantity || 1, supplier: c.supplier || '', rentmanId: c.rentmanId });
+                    miscCosts.push({ desc: c.desc || '', cost: c.cost || 0, qty: c.quantity || 1, supplier: c.supplier || '', rentmanId: c.rentmanId, subprojectId: c.subprojectId || null });
                     break;
             }
         });
@@ -160,6 +162,7 @@ export function useRentmanSync() {
             subRentals,
             purchases,
             miscCosts,
+            subprojects: rawSubprojects || [],
             rentmanTotals: rentmanTotals || {},
             rentmanProject: project || {},
         };

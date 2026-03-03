@@ -1,186 +1,598 @@
 import { useState, useRef, useEffect } from 'react';
+import jsPDF from 'jspdf';
+import autoTable, { applyPlugin } from 'jspdf-autotable';
+
+// Register autotable plugin on jsPDF prototype (required for Vite/Rollup)
+applyPlugin(jsPDF);
 
 const fmt = v => (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 });
 const fmtD = v => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ═══════════════════════════════════════════════════════════════
-// 1. CLIENT-FACING PDF (No costs, margins, suppliers)
+// 1. ANALYTICAL PDF REPORT (Full financial data — jsPDF)
 // ═══════════════════════════════════════════════════════════════
 // eslint-disable-next-line react-refresh/only-export-components
-export function generatePDFQuote(projectData, calc, appConfig) {
-  const d = projectData;
-  const branding = appConfig?.branding || {};
-  const today = new Date().toLocaleDateString('it-IT');
-  const eventDate = d.eventDate ? new Date(d.eventDate).toLocaleDateString('it-IT') : 'Da definire';
+export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubprojectId = null) {
+  try {
+    const d = projectData;
+    const branding = appConfig?.branding || {};
+    const today = new Date().toLocaleDateString('it-IT');
+    const eventDate = d.eventDate ? new Date(d.eventDate).toLocaleDateString('it-IT') : 'Da definire';
 
-  const primaryColor = branding.pdfHeaderColor || '#1B3A5C';
-  const accentColor = branding.pdfAccentColor || '#2E86AB';
-  const companyName = branding.companyFullName || 'Itinera Pro S.r.l.';
-  const tagline = branding.tagline || 'Event Production & Design';
-  const footer = branding.pdfFooterText || '';
-  const legalNotes = branding.quoteLegalNotes || '';
-  const paymentTerms = branding.quotePaymentTerms || '';
-  const showWatermark = branding.pdfWatermark && d.status === 'draft';
-  const watermarkText = branding.pdfWatermarkText || 'BOZZA';
+    const primaryColor = branding.pdfHeaderColor || '#1B3A5C';
+    const accentColor = branding.pdfAccentColor || '#2E86AB';
+    const companyName = branding.companyFullName || 'Itinera Pro S.r.l.';
 
-  // Equipment — CLIENT view: description, qty, sell price, total sell
-  const equipmentList = (calc.eqCalcs || []).filter(e => e.desc && (e.sellPrice || 0) > 0);
-  const totalEqSell = equipmentList.reduce((s, e) => s + e.revenue, 0);
+    // Parse hex colors to RGB arrays
+    const hexToRgb = (hex) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b];
+    };
+    const primaryRgb = hexToRgb(primaryColor);
+    const accentRgb = hexToRgb(accentColor);
 
-  // Transport — CLIENT view: description, route, sell price
-  const transportList = (calc.legCalcs || []).filter(l => (l.desc || l.route) && (l.sellPrice || 0) > 0);
-  const totalTransportSell = transportList.reduce((s, l) => s + l.sellPrice, 0);
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = 0;
 
-  // Staff — CLIENT view: role, sell total
-  const staffList = [...(calc.intCalcs || []), ...(calc.extCalcs || [])].filter(s => s.role && (s.sellTotal || 0) > 0);
-  const whSell = d.whSellTotal || 0;
-  const totalStaffSell = staffList.reduce((s, r) => s + (r.sellTotal || 0), 0) + whSell;
+    // ── HEADER BAR ──
+    doc.setFillColor(...primaryRgb);
+    doc.rect(0, 0, pageW, 28, 'F');
+    doc.setFillColor(...accentRgb);
+    doc.rect(0, 26, pageW, 2, 'F');
 
-  // Total Quote
-  const totalQuote = totalEqSell + totalTransportSell + totalStaffSell;
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(companyName, 10, 12);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('REPORT ANALITICO INTERNO', 10, 19);
 
-  const phases = (d.phases || []).filter(p => p.phase);
+    // Right-side meta
+    doc.setFontSize(8);
+    const meta = [
+      `Progetto: ${d.projectName || 'Senza nome'}`,
+      `Cliente: ${d.clientName || '-'}`,
+      `Data Evento: ${eventDate}`,
+      `Report: ${today}`,
+    ];
+    meta.forEach((line, i) => {
+      doc.text(line, pageW - 10, 8 + i * 5, { align: 'right' });
+    });
+    y = 34;
 
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', sans-serif; color: #1e293b; line-height: 1.6; background: #fff; }
-  @page { margin: 0; size: A4; }
-  .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 0; position: relative; overflow: hidden; }
-  
-  .header { background: linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%); color: #fff; padding: 40px; }
-  .header h1 { font-size: 28px; font-weight: 800; letter-spacing: 2px; margin-bottom: 4px; }
-  .header .tagline { font-size: 12px; opacity: 0.8; letter-spacing: 1px; text-transform: uppercase; }
-  .header .divider { width: 50px; height: 3px; background: rgba(255,255,255,0.5); margin: 16px 0; border-radius: 2px; }
-  .header .meta { display: flex; justify-content: space-between; margin-top: 20px; }
-  .header .meta-item { font-size: 12px; }
-  .header .meta-label { opacity: 0.7; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .header .meta-value { font-weight: 700; font-size: 14px; margin-top: 2px; }
-  
-  .content { padding: 32px 40px; }
-  .section { margin-bottom: 24px; }
-  .section-title { font-size: 14px; font-weight: 700; color: ${primaryColor}; text-transform: uppercase; letter-spacing: 1px; padding-bottom: 8px; border-bottom: 2px solid ${accentColor}; margin-bottom: 12px; }
-  
-  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
-  th { background: #f8fafc; color: #475569; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; padding: 8px 12px; text-align: left; border-bottom: 2px solid #e2e8f0; }
-  td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
-  tr:nth-child(even) { background: #fafbfc; }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
-  .font-bold { font-weight: 700; }
-  
-  .total-box { background: linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%); color: #fff; border-radius: 12px; padding: 24px 32px; margin: 24px 0; display: flex; justify-content: space-between; align-items: center; }
-  .total-label { font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
-  .total-value { font-size: 32px; font-weight: 800; }
-  
-  .subtotal-row { background: #f1f5f9 !important; font-weight: 700; }
-  
-  .footer { padding: 20px 40px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; }
-  .legal { background: #f8fafc; padding: 16px 20px; border-radius: 8px; font-size: 11px; color: #64748b; line-height: 1.8; margin-top: 16px; }
-  
-  .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); font-size: 120px; font-weight: 800; color: rgba(220,38,38,0.06); letter-spacing: 20px; pointer-events: none; z-index: 0; }
-  
-  @media print {
-    .page { width: 100%; min-height: auto; }
-    .no-print { display: none; }
+    // ── STAND CONTEXT HEADER (if viewing a specific subproject) ──
+    if (selectedSubprojectId !== null && d.subprojects && d.subprojects.length > 0) {
+      const stand = d.subprojects.find(sp => sp.id === selectedSubprojectId);
+      if (stand) {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...accentRgb);
+        doc.text(`STAND: ${stand.name || 'Senza nome'}`, 10, y);
+        y += 7;
+      }
+    }
+
+    // ── DASHBOARD SUMMARY ──
+    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RIEPILOGO FINANZIARIO', 10, y);
+    y += 6;
+
+    const dashCards = [
+      { label: 'Ricavo Lordo', value: `€ ${fmt(d.revenueGross)}`, color: accentRgb },
+      { label: 'Ricavo Netto', value: `€ ${fmt(calc.revenueNet)}`, color: accentRgb },
+      { label: 'Costi Totali', value: `€ ${fmt(calc.totalCostsAll)}`, color: [220, 53, 69] },
+      { label: 'Margine Netto', value: `€ ${fmt(calc.margin)}`, color: calc.margin >= 0 ? [39, 174, 96] : [220, 53, 69] },
+      { label: 'Margine %', value: `${fmtD(calc.marginPct)}%`, color: calc.marginPct >= 15 ? [39, 174, 96] : [220, 53, 69] },
+      { label: 'Markup %', value: `${fmtD(calc.markupPct)}%`, color: [108, 117, 125] },
+    ];
+
+    const cardW = (pageW - 20 - 5 * 5) / 6; // 6 cards with 5px gap
+    dashCards.forEach((card, i) => {
+      const cx = 10 + i * (cardW + 5);
+      // Card background
+      doc.setFillColor(248, 249, 250);
+      doc.roundedRect(cx, y, cardW, 18, 2, 2, 'F');
+      // Color accent bar
+      doc.setFillColor(...card.color);
+      doc.rect(cx, y, cardW, 3, 'F');
+      // Label
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text(card.label, cx + cardW / 2, y + 8, { align: 'center' });
+      // Value
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...card.color);
+      doc.text(card.value, cx + cardW / 2, y + 15, { align: 'center' });
+    });
+
+    y += 24;
+
+    // ── Cost breakdown mini-row ──
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    const breakdown = [
+      `Materiale: €${fmt(calc.totalEqCost)}`,
+      `Trasporti: €${fmt(calc.totalTransport)}`,
+      `Staff: €${fmt(calc.totalAllStaff)}`,
+      `Pianif.: €${fmt(calc.totalPlanCost)}`,
+      `Vitto/Alloggio: €${fmt(calc.totalAccom)}`,
+      `Fee Agenzia: €${fmt(calc.agencyFeeTotal || 0)}`,
+      `Contingency: €${fmt(calc.contingencyAmt)}`,
+      `Fin.: €${fmt(calc.financialCost)}`,
+    ];
+    doc.text(breakdown.join('   |   '), 10, y);
+    y += 6;
+
+    // ── Separator ──
+    doc.setDrawColor(...accentRgb);
+    doc.setLineWidth(0.5);
+    doc.line(10, y, pageW - 10, y);
+    y += 5;
+
+    // ── CRUSCOTTO STAND (Home view only) ──
+    if (selectedSubprojectId === null && d.subprojects && d.subprojects.length > 0) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(40, 40, 40);
+      doc.text('RIEPILOGO STAND / SOTTOPROGETTI', 10, y);
+      y += 2;
+
+      const spRows = d.subprojects.map(sp => {
+        const spItems = (d.eqItems || []).filter(e => (e.subprojectId || null) === sp.id);
+        const matCost = spItems.reduce((s, e) => s + Math.round((e.qty || 0) * (e.costUnit || 0) * (e.coefficient ?? 1) * 100) / 100, 0);
+        const matRev = spItems.reduce((s, e) => s + (e.sellPrice || 0), 0);
+        const spLegs = (d.legs || []).filter(l => (l.subprojectId || null) === sp.id);
+        const trCost = spLegs.reduce((s, l) => s + ((l.rentalDay || 0) * (l.rentalDays || 1) * (l.nVeh || 1)), 0);
+        const spStaff = [...(d.intStaff || []), ...(d.extStaff || [])].filter(x => (x.subprojectId || null) === sp.id);
+        const staffCost = spStaff.reduce((s, x) => s + (x.count || 0) * (x.costHour || 0) * ((x.hOrd || 0) + (x.hStr || 0) + (x.hFest || 0) + (x.hNott || 0)), 0);
+        const extraCost = [...(d.analytics || []), ...(d.damages || []), ...(d.misc || [])].filter(c => (c.subprojectId || null) === sp.id).reduce((s, c) => s + (c.cost || 0), 0);
+        const totalCost = matCost + trCost + staffCost + extraCost;
+        return [
+          `${sp.inFinancial ? '✓' : '✗'} ${sp.name || 'Stand'}`,
+          `€ ${fmt(matCost)}`,
+          `€ ${fmt(matRev)}`,
+          `€ ${fmt(trCost)}`,
+          `€ ${fmt(staffCost)}`,
+          `€ ${fmt(extraCost)}`,
+          `€ ${fmt(totalCost)}`,
+        ];
+      });
+
+      // Totals row (active stands only)
+      const activeStands = d.subprojects.filter(sp => sp.inFinancial);
+      const totMat = activeStands.reduce((s, sp) => {
+        return s + (d.eqItems || []).filter(e => (e.subprojectId || null) === sp.id).reduce((a, e) => a + Math.round((e.qty || 0) * (e.costUnit || 0) * (e.coefficient ?? 1) * 100) / 100, 0);
+      }, 0);
+      const totRev = activeStands.reduce((s, sp) => {
+        return s + (d.eqItems || []).filter(e => (e.subprojectId || null) === sp.id).reduce((a, e) => a + (e.sellPrice || 0), 0);
+      }, 0);
+      const totTr = activeStands.reduce((s, sp) => {
+        return s + (d.legs || []).filter(l => (l.subprojectId || null) === sp.id).reduce((a, l) => a + ((l.rentalDay || 0) * (l.rentalDays || 1) * (l.nVeh || 1)), 0);
+      }, 0);
+      const totStaff = activeStands.reduce((s, sp) => {
+        return s + [...(d.intStaff || []), ...(d.extStaff || [])].filter(x => (x.subprojectId || null) === sp.id).reduce((a, x) => a + (x.count || 0) * (x.costHour || 0) * ((x.hOrd || 0) + (x.hStr || 0) + (x.hFest || 0) + (x.hNott || 0)), 0);
+      }, 0);
+      const totExtra = activeStands.reduce((s, sp) => {
+        return s + [...(d.analytics || []), ...(d.damages || []), ...(d.misc || [])].filter(c => (c.subprojectId || null) === sp.id).reduce((a, c) => a + (c.cost || 0), 0);
+      }, 0);
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Stand', 'Materiale €', 'Ricavo Mat. €', 'Trasporti €', 'Staff €', 'Extra €', 'Totale €']],
+        body: spRows,
+        foot: [['TOTALE STAND ATTIVI', `€ ${fmt(totMat)}`, `€ ${fmt(totRev)}`, `€ ${fmt(totTr)}`, `€ ${fmt(totStaff)}`, `€ ${fmt(totExtra)}`, `€ ${fmt(totMat + totTr + totStaff + totExtra)}`]],
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.2 },
+        headStyles: { fillColor: accentRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6.5, halign: 'center' },
+        footStyles: { fillColor: [240, 240, 240], fontStyle: 'bold', textColor: [40, 40, 40] },
+        columnStyles: {
+          0: { cellWidth: 55 },
+          1: { halign: 'right', cellWidth: 30 },
+          2: { halign: 'right', cellWidth: 30 },
+          3: { halign: 'right', cellWidth: 30 },
+          4: { halign: 'right', cellWidth: 30 },
+          5: { halign: 'right', cellWidth: 30 },
+          6: { halign: 'right', cellWidth: 30 },
+        },
+        margin: { left: 10, right: 10 },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.column.index === 0) {
+            const sp = d.subprojects[data.row.index];
+            if (sp && !sp.inFinancial) {
+              data.cell.styles.textColor = [180, 180, 180];
+              data.cell.styles.fontStyle = 'italic';
+            }
+          }
+        },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // ── TABLE: MATERIALE ──
+    const eqRows = (calc.eqCalcs || []).map(e => [
+      e.desc || '',
+      e.supplier || '-',
+      e.itemCategory || 'Proprio',
+      e.qty,
+      fmtD(e.coefficient ?? 1),
+      `€ ${fmt(e.costUnit)}`,
+      `€ ${fmt(e.cost)}`,
+      `€ ${fmt(e.sellPrice || 0)}`,
+      `€ ${fmt(e.revenue)}`,
+      `€ ${fmt(e.marginEur)}`,
+      e.marginPct !== null ? `${fmtD(e.marginPct)}%` : 'N/A',
+      fmtD(e.vol),
+      fmt(e.weight),
+    ]);
+
+    if (eqRows.length > 0) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(40, 40, 40);
+      doc.text('MATERIALE E ATTREZZATURE', 10, y);
+      y += 2;
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Descrizione', 'Fornitore', 'Categoria', 'QTY', 'Coeff', 'Costo Unit.', 'Costo Tot.', 'Vendita €/pz', 'Vendita Tot.', 'Margine €', 'Margine %', 'M³', 'KG']],
+        body: eqRows,
+        foot: [['TOTALE', '', '', '', '', '', `€ ${fmt(calc.totalEqCost)}`, '', `€ ${fmt(calc.totalEqRevenue)}`, `€ ${fmt(calc.totalEqMargin)}`, calc.totalEqRevenue > 0 ? `${fmtD((calc.totalEqRevenue - calc.totalEqCost) / calc.totalEqRevenue * 100)}%` : '-', fmtD(calc.totalVol), fmt(calc.totalWeight)]],
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.2 },
+        headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6.5, halign: 'center' },
+        footStyles: { fillColor: [240, 240, 240], fontStyle: 'bold', textColor: [40, 40, 40] },
+        columnStyles: {
+          0: { cellWidth: 45 },
+          1: { cellWidth: 28 },
+          2: { cellWidth: 20 },
+          3: { halign: 'center', cellWidth: 12 },
+          4: { halign: 'center', cellWidth: 12 },
+          5: { halign: 'right', cellWidth: 20 },
+          6: { halign: 'right', cellWidth: 22 },
+          7: { halign: 'right', cellWidth: 22 },
+          8: { halign: 'right', cellWidth: 22 },
+          9: { halign: 'right', cellWidth: 20 },
+          10: { halign: 'center', cellWidth: 18 },
+          11: { halign: 'center', cellWidth: 14 },
+          12: { halign: 'center', cellWidth: 14 },
+        },
+        margin: { left: 10, right: 10 },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // ── TABLE: TRASPORTI ──
+    const trRows = (calc.legCalcs || []).map(l => [
+      l.desc || '-',
+      l.route || '-',
+      l.vName || '-',
+      l.nVeh,
+      l.km,
+      `€ ${fmt(l.fuel)}`,
+      `€ ${fmt(l.toll)}`,
+      `€ ${fmt(l.rQ)}`,
+      `€ ${fmt(l.total)}`,
+      `€ ${fmt(l.sellPrice)}`,
+      `€ ${fmt(l.legMargin)}`,
+      l.legMarginPct !== null ? `${fmtD(l.legMarginPct)}%` : 'N/A',
+    ]);
+
+    if (trRows.length > 0) {
+      // Check if we need a new page
+      if (y > doc.internal.pageSize.getHeight() - 40) {
+        doc.addPage();
+        y = 15;
+      }
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(40, 40, 40);
+      doc.text('TRASPORTI', 10, y);
+      y += 2;
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Descrizione', 'Tratta', 'Veicolo', 'N° Veicoli', 'Km', 'Carburante €', 'Pedaggi €', 'Nolo €', 'Costo Tot.', 'Vendita €', 'Margine €', 'Margine %']],
+        body: trRows,
+        foot: [['TOTALE', '', '', '', '', '', '', '', `€ ${fmt(calc.totalTransport)}`, `€ ${fmt(calc.totalTransportRevenue)}`, `€ ${fmt(calc.totalTransportMargin)}`, calc.totalTransportMarginPct !== null ? `${fmtD(calc.totalTransportMarginPct)}%` : '-']],
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.2 },
+        headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6.5, halign: 'center' },
+        footStyles: { fillColor: [240, 240, 240], fontStyle: 'bold', textColor: [40, 40, 40] },
+        columnStyles: {
+          0: { cellWidth: 35 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 30 },
+          3: { halign: 'center', cellWidth: 18 },
+          4: { halign: 'center', cellWidth: 14 },
+          5: { halign: 'right', cellWidth: 22 },
+          6: { halign: 'right', cellWidth: 20 },
+          7: { halign: 'right', cellWidth: 20 },
+          8: { halign: 'right', cellWidth: 22 },
+          9: { halign: 'right', cellWidth: 22 },
+          10: { halign: 'right', cellWidth: 20 },
+          11: { halign: 'center', cellWidth: 18 },
+        },
+        margin: { left: 10, right: 10 },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // ── TABLE: STAFF ──
+    const staffRows = [];
+    // Warehouse
+    if (d.whCount > 0) {
+      const whCost = calc.totalWh;
+      const whSell = d.whSellTotal || 0;
+      const whMargin = whSell - whCost;
+      const whMarginPct = whSell > 0 ? (whMargin / whSell) * 100 : null;
+      staffRows.push([
+        'Magazzino', 'Magazziniere', d.whCount, `€ ${fmt(d.whRate)}`,
+        fmtD(d.whHLoad + d.whHUnload), '-', '-', '-',
+        `€ ${fmt(whCost)}`, `€ ${fmt(whSell)}`, `€ ${fmt(whMargin)}`,
+        whMarginPct !== null ? `${fmtD(whMarginPct)}%` : 'N/A',
+      ]);
+    }
+    // Internal staff
+    (calc.intCalcs || []).forEach(s => {
+      const margin = (s.sellTotal || 0) - s.total;
+      const marginPct = (s.sellTotal || 0) > 0 ? (margin / s.sellTotal) * 100 : null;
+      staffRows.push([
+        'Interno', s.role || '-', s.count, `€ ${fmt(s.costHour)}`,
+        fmtD(s.hOrd), fmtD(s.hStr), fmtD(s.hFest), fmtD(s.hNott),
+        `€ ${fmt(s.total)}`, `€ ${fmt(s.sellTotal || 0)}`, `€ ${fmt(margin)}`,
+        marginPct !== null ? `${fmtD(marginPct)}%` : 'N/A',
+      ]);
+    });
+    // External staff
+    (calc.extCalcs || []).forEach(s => {
+      const margin = (s.sellTotal || 0) - s.total;
+      const marginPct = (s.sellTotal || 0) > 0 ? (margin / s.sellTotal) * 100 : null;
+      staffRows.push([
+        'Esterno', s.role || '-', s.count, `€ ${fmt(s.costHour)}`,
+        fmtD(s.hOrd), fmtD(s.hStr), fmtD(s.hFest), fmtD(s.hNott),
+        `€ ${fmt(s.total)}`, `€ ${fmt(s.sellTotal || 0)}`, `€ ${fmt(margin)}`,
+        marginPct !== null ? `${fmtD(marginPct)}%` : 'N/A',
+      ]);
+    });
+
+    if (staffRows.length > 0) {
+      if (y > doc.internal.pageSize.getHeight() - 40) {
+        doc.addPage();
+        y = 15;
+      }
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(40, 40, 40);
+      doc.text('PERSONALE', 10, y);
+      y += 2;
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Tipo', 'Ruolo', 'N°', '€/h', 'Ore Ord', 'Ore Str', 'Ore Fest', 'Ore Nott', 'Costo Tot.', 'Vendita €', 'Margine €', 'Margine %']],
+        body: staffRows,
+        foot: [['TOTALE', '', '', '', '', '', '', '', `€ ${fmt(calc.totalAllStaff)}`, `€ ${fmt(calc.totalStaffRevenue)}`, `€ ${fmt(calc.totalStaffMargin)}`, calc.totalStaffMarginPct !== null ? `${fmtD(calc.totalStaffMarginPct)}%` : '-']],
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak', lineColor: [220, 220, 220], lineWidth: 0.2 },
+        headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6.5, halign: 'center' },
+        footStyles: { fillColor: [240, 240, 240], fontStyle: 'bold', textColor: [40, 40, 40] },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 40 },
+          2: { halign: 'center', cellWidth: 12 },
+          3: { halign: 'right', cellWidth: 18 },
+          4: { halign: 'center', cellWidth: 18 },
+          5: { halign: 'center', cellWidth: 18 },
+          6: { halign: 'center', cellWidth: 18 },
+          7: { halign: 'center', cellWidth: 18 },
+          8: { halign: 'right', cellWidth: 24 },
+          9: { halign: 'right', cellWidth: 24 },
+          10: { halign: 'right', cellWidth: 22 },
+          11: { halign: 'center', cellWidth: 18 },
+        },
+        margin: { left: 10, right: 10 },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // ── TABLE: ALTRI COSTI ──
+    const otherCosts = [
+      ['Pianificazione', `€ ${fmt(calc.totalPlanCost)}`],
+      ['Vitto & Alloggio', `€ ${fmt(calc.totalAccom)}`],
+      ['Costi Analitici', `€ ${fmt(calc.totalAn)}`],
+      ['Danni & Extra', `€ ${fmt(calc.totalDmg)}`],
+      ['Varie', `€ ${fmt(calc.totalMisc)}`],
+      ['Ammortamenti', `€ ${fmt(calc.totalDepreciation)}`],
+      [`Fee Agenzia / WP (${(d.agencyFeeType || 'percent') === 'percent' ? (d.agencyFeeValue || 0) + '%' : 'fisso'})`, `€ ${fmt(calc.agencyFeeTotal || 0)}`],
+      ['Contingency', `€ ${fmt(calc.contingencyAmt)}`],
+      ['Costo Finanziario', `€ ${fmt(calc.financialCost)}`],
+    ];
+
+    if (y > doc.internal.pageSize.getHeight() - 50) {
+      doc.addPage();
+      y = 15;
+    }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(40, 40, 40);
+    doc.text('ALTRI COSTI', 10, y);
+    y += 2;
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Voce', 'Importo']],
+      body: otherCosts,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2, lineColor: [220, 220, 220], lineWidth: 0.2 },
+      headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      columnStyles: {
+        0: { cellWidth: 60 },
+        1: { halign: 'right', cellWidth: 30 },
+      },
+      tableWidth: 90,
+      margin: { left: 10 },
+      didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    // ═══════════════════════════════════════════════════════════════
+    // NEW PAGE: RIEPILOGO FINANZIARIO E MARGINALITÀ (USO INTERNO)
+    // ═══════════════════════════════════════════════════════════════
+    doc.addPage();
+    y = 0;
+
+    // Header bar for summary page
+    doc.setFillColor(...primaryRgb);
+    doc.rect(0, 0, pageW, 22, 'F');
+    doc.setFillColor(...accentRgb);
+    doc.rect(0, 20, pageW, 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RIEPILOGO FINANZIARIO E MARGINALITÀ (USO INTERNO)', 10, 14);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Progetto: ${d.projectName || '-'}  |  Cliente: ${d.clientName || '-'}  |  ${today}`, pageW - 10, 14, { align: 'right' });
+    y = 30;
+
+    // Margin color helper
+    const marginColor = (pct) => {
+      if (pct >= 15) return [39, 174, 96];   // green
+      if (pct >= 0) return [230, 126, 34];   // orange
+      return [220, 53, 69];                   // red
+    };
+    const mCol = marginColor(calc.marginPct || 0);
+
+    // Fee description
+    const feeLabel = (d.agencyFeeType || 'percent') === 'percent'
+      ? `Fee Agenzia / WP (${d.agencyFeeValue || 0}% di €${fmt(calc.effectiveGross)})`
+      : `Fee Agenzia / WP (importo fisso)`;
+
+    // Summary Table
+    const summaryRows = [
+      // SECTION: RICAVI
+      ['RICAVO LORDO EFFETTIVO', `€ ${fmtD(calc.effectiveGross)}`, '', { section: 'revenue' }],
+      [`  Sconto applicato (${d.discType === '%' ? d.discVal + '%' : '€'})`, `- € ${fmtD(calc.discAmt)}`, '', {}],
+      ['RICAVO NETTO (post-sconto)', `€ ${fmtD(calc.revenueNet)}`, '', { bold: true }],
+      // SEPARATOR
+      ['', '', '', { separator: true }],
+      // SECTION: COSTI OPERATIVI
+      ['COSTI OPERATIVI', '', '', { header: true }],
+      ['  Materiale + Sub + Acquisti', `€ ${fmtD(calc.costMaterial)}`, `${calc.revenueNet > 0 ? fmtD(calc.costMaterial / calc.revenueNet * 100) : '0'}%`, {}],
+      ['  Ammortamento materiale proprio', `€ ${fmtD(calc.totalDepreciation)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalDepreciation / calc.revenueNet * 100) : '0'}%`, {}],
+      ['  Trasporto', `€ ${fmtD(calc.totalTransport)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalTransport / calc.revenueNet * 100) : '0'}%`, {}],
+      ['  Personale (campo + magazzino)', `€ ${fmtD(calc.totalAllStaff)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalAllStaff / calc.revenueNet * 100) : '0'}%`, {}],
+      // SEPARATOR
+      ['', '', '', { separator: true }],
+      // SECTION: COSTI AGGIUNTIVI
+      ['COSTI AGGIUNTIVI & OVERHEAD', '', '', { header: true }],
+      ['  Pianificazione / PM', `€ ${fmtD(calc.totalPlanCost)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalPlanCost / calc.revenueNet * 100) : '0'}%`, {}],
+      ['  Vitto & Alloggio', `€ ${fmtD(calc.totalAccom)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalAccom / calc.revenueNet * 100) : '0'}%`, {}],
+      ['  Costi Analitici + Danni + Extra', `€ ${fmtD(calc.totalAn + calc.totalDmg + calc.totalMisc)}`, `${calc.revenueNet > 0 ? fmtD((calc.totalAn + calc.totalDmg + calc.totalMisc) / calc.revenueNet * 100) : '0'}%`, {}],
+      [`  ${feeLabel}`, `€ ${fmtD(calc.agencyFeeTotal || 0)}`, `${calc.revenueNet > 0 ? fmtD((calc.agencyFeeTotal || 0) / calc.revenueNet * 100) : '0'}%`, { highlight: (calc.agencyFeeTotal || 0) > 0 }],
+      // SEPARATOR
+      ['', '', '', { separator: true }],
+      // SECTION: TOTALI E MARGINE
+      ['SUBTOTALE COSTI (pre-contingency)', `€ ${fmtD(calc.costsBeforeContingency)}`, `${calc.revenueNet > 0 ? fmtD(calc.costsBeforeContingency / calc.revenueNet * 100) : '0'}%`, { bold: true }],
+      [`  Contingency (${d.contingencyPct}%)`, `€ ${fmtD(calc.contingencyAmt)}`, '', {}],
+      [`  Costo finanziario (${d.paymentDays}gg, ${d.interestRate}%)`, `€ ${fmtD(calc.financialCost)}`, '', {}],
+      ['TOTALE COSTI PROGETTO', `€ ${fmtD(calc.totalCostsAll)}`, '', { bold: true, fillColor: [248, 249, 250] }],
+      // SEPARATOR
+      ['', '', '', { separator: true }],
+      // FINAL MARGIN
+      ['MARGINE NETTO', `€ ${fmtD(calc.margin)}`, `${fmtD(calc.marginPct)}%`, { bold: true, textColor: mCol }],
+      ['MARKUP SUL COSTO', `${fmtD(calc.markupPct)}%`, '', {}],
+      ['MARGINE / GIORNO LAVORO', `€ ${fmtD(calc.marginPerDay || 0)}`, `(${d.totalWorkDays || 0} gg)`, {}],
+      ['BREAK-EVEN (ricavo minimo)', `€ ${fmtD(calc.totalCostsAll)}`, '', { bold: true, fillColor: [255, 248, 240] }],
+    ];
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Voce', 'Importo', 'Incidenza %']],
+      body: summaryRows.map(row => [row[0], row[1], row[2]]),
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: { top: 2.5, bottom: 2.5, left: 4, right: 4 }, lineColor: [230, 230, 230], lineWidth: 0.2, overflow: 'linebreak' },
+      headStyles: { fillColor: primaryRgb, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, halign: 'left' },
+      columnStyles: {
+        0: { cellWidth: 120, font: 'helvetica' },
+        1: { cellWidth: 50, halign: 'right', font: 'helvetica' },
+        2: { cellWidth: 35, halign: 'center', font: 'helvetica', textColor: [120, 120, 120] },
+      },
+      tableWidth: 205,
+      margin: { left: 10 },
+      didParseCell: (data) => {
+        if (data.section !== 'body') return;
+        const meta = summaryRows[data.row.index]?.[3] || {};
+        if (meta.separator) {
+          data.cell.styles.minCellHeight = 2;
+          data.cell.styles.fillColor = [255, 255, 255];
+          data.cell.text = [''];
+        }
+        if (meta.header) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 244, 248];
+          data.cell.styles.textColor = primaryRgb;
+          data.cell.styles.fontSize = 9;
+        }
+        if (meta.bold) {
+          data.cell.styles.fontStyle = 'bold';
+        }
+        if (meta.fillColor) {
+          data.cell.styles.fillColor = meta.fillColor;
+        }
+        if (meta.textColor) {
+          data.cell.styles.textColor = meta.textColor;
+        }
+        if (meta.highlight && data.column.index === 1) {
+          data.cell.styles.textColor = [233, 30, 99]; // pink like UI
+        }
+        // Color the margin row
+        if (data.row.index === summaryRows.length - 4 && data.column.index >= 1) {
+          data.cell.styles.textColor = mCol;
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fontSize = 11;
+        }
+      },
+      didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Watermark note
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(180, 180, 180);
+    doc.text('Documento riservato — Solo per uso interno. I dati sono calcolati automaticamente dal sistema Itinera Calculator.', 10, y);
+
+    // ── SAVE ──
+    const safeName = (d.projectName || 'Progetto').replace(/[^a-zA-Z0-9_\- àèéìòùÀÈÉÌÒÙ]/g, '_');
+    doc.save(`Report_Analitico_${safeName}.pdf`);
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    alert('Errore nella generazione del PDF: ' + (err.message || err));
   }
-</style>
-</head><body>
-${showWatermark ? '<div class="watermark">' + watermarkText + '</div>' : ''}
-<div class="page">
-  <div class="header">
-    <h1>${companyName}</h1>
-    <div class="tagline">${tagline}</div>
-    <div class="divider"></div>
-    <div style="font-size: 18px; font-weight: 700; margin-top: 12px;">PREVENTIVO</div>
-    <div class="meta">
-      <div class="meta-item"><div class="meta-label">Progetto</div><div class="meta-value">${d.projectName || 'Senza nome'}</div></div>
-      <div class="meta-item"><div class="meta-label">Cliente</div><div class="meta-value">${d.clientName || '-'}</div></div>
-      <div class="meta-item"><div class="meta-label">Tipo Evento</div><div class="meta-value">${d.eventType || '-'}</div></div>
-      <div class="meta-item"><div class="meta-label">Data Evento</div><div class="meta-value">${eventDate}</div></div>
-      <div class="meta-item"><div class="meta-label">Data Preventivo</div><div class="meta-value">${today}</div></div>
-    </div>
-  </div>
-  
-  <div class="content">
-    ${equipmentList.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Materiale e Attrezzature</div>
-      <table>
-        <thead><tr><th>Descrizione</th><th class="text-center">Qty</th><th class="text-center">Coeff.</th><th class="text-right">Prezzo Unit.</th><th class="text-right">Totale</th></tr></thead>
-        <tbody>${equipmentList.map(e => `<tr><td>${e.desc}</td><td class="text-center">${e.qty}</td><td class="text-center">${fmtD(e.coefficient ?? 1)}</td><td class="text-right">${fmt(e.sellPrice)} €</td><td class="text-right font-bold">${fmt(e.revenue)} €</td></tr>`).join('')}
-        <tr class="subtotal-row"><td colspan="4">Subtotale Materiale</td><td class="text-right font-bold">${fmt(totalEqSell)} €</td></tr>
-        </tbody>
-      </table>
-    </div>` : ''}
-
-    ${transportList.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Trasporto</div>
-      <table>
-        <thead><tr><th>Descrizione</th><th>Tratta</th><th class="text-center">N° Veicoli</th><th class="text-right">Importo</th></tr></thead>
-        <tbody>${transportList.map(l => `<tr><td>${l.desc || '-'}</td><td>${l.route || '-'}</td><td class="text-center">${l.nVeh || 1}</td><td class="text-right font-bold">${fmt(l.sellPrice)} €</td></tr>`).join('')}
-        <tr class="subtotal-row"><td colspan="3">Subtotale Trasporto</td><td class="text-right font-bold">${fmt(totalTransportSell)} €</td></tr>
-        </tbody>
-      </table>
-    </div>` : ''}
-
-    ${(staffList.length > 0 || whSell > 0) ? `
-    <div class="section">
-      <div class="section-title">Personale</div>
-      <table>
-        <thead><tr><th>Ruolo</th><th class="text-center">N°</th><th class="text-right">Importo</th></tr></thead>
-        <tbody>
-        ${whSell > 0 ? `<tr><td>Magazzino (${d.whCount}p)</td><td class="text-center">${d.whCount}</td><td class="text-right font-bold">${fmt(whSell)} €</td></tr>` : ''}
-        ${staffList.map(s => `<tr><td>${s.role}</td><td class="text-center">${s.count}</td><td class="text-right font-bold">${fmt(s.sellTotal)} €</td></tr>`).join('')}
-        <tr class="subtotal-row"><td colspan="2">Subtotale Personale</td><td class="text-right font-bold">${fmt(totalStaffSell)} €</td></tr>
-        </tbody>
-      </table>
-    </div>` : ''}
-
-    ${phases.length > 0 ? `
-    <div class="section">
-      <div class="section-title">Fasi di Produzione</div>
-      <table>
-        <thead><tr><th>Fase</th><th class="text-center">Crew</th><th class="text-center">Ore</th><th>Note</th></tr></thead>
-        <tbody>${phases.map(p => `<tr><td class="font-bold">${p.phase}</td><td class="text-center">${p.crew}</td><td class="text-center">${p.hours}</td><td style="color:#64748b">${p.notes || ''}</td></tr>`).join('')}</tbody>
-      </table>
-    </div>` : ''}
-
-    <div class="total-box">
-      <div class="total-label">Totale Preventivo</div>
-      <div class="total-value">${fmt(totalQuote)} €</div>
-    </div>
-
-    ${(legalNotes || paymentTerms) ? `
-    <div class="legal">
-      ${legalNotes ? '<div style="margin-bottom:8px"><strong>Note:</strong> ' + legalNotes + '</div>' : ''}
-      ${paymentTerms ? '<div><strong>Condizioni di pagamento:</strong> ' + paymentTerms + '</div>' : ''}
-    </div>` : ''}
-  </div>
-
-  <div class="footer">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div>${footer}</div>
-      <div>Pagina 1</div>
-    </div>
-  </div>
-</div>
-</body></html>`;
-
-  return html;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function openPDFPreview(html) {
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 500);
-  }
+function addPageFooter(doc, pageNumber) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(150, 150, 150);
+  doc.text('Report Analitico Interno — Documento Riservato', 10, pageH - 5);
+  doc.text(`Pagina ${pageNumber}`, pageW - 10, pageH - 5, { align: 'right' });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -227,15 +639,23 @@ export function generateInternalCSV(projectData, calc) {
 
   // Staff
   csv += `--- PERSONALE ---\n`;
-  csv += `Tipo,Ruolo,N°,€/h,Ore Ord,Ore Str,Ore Fest,Ore Nott,Costo Tot €,Vendita €,Margine €\n`;
-  csv += `Magazzino,Magazziniere,${d.whCount},${n(d.whRate)},${n(d.whHLoad + d.whHUnload)},,,,,${n(calc.totalWh)},${n(d.whSellTotal || 0)},${n((d.whSellTotal || 0) - calc.totalWh)}\n`;
+  csv += `Tipo,Ruolo,N°,€/h,Ore Ord,Ore Str,Ore Fest,Ore Nott,Costo Tot €,Vendita €,Margine €,Margine %\n`;
+  const whCost = calc.totalWh;
+  const whSell = d.whSellTotal || 0;
+  const whMargin = whSell - whCost;
+  const whMarginPct = whSell > 0 ? (whMargin / whSell) * 100 : null;
+  csv += `Magazzino,Magazziniere,${d.whCount},${n(d.whRate)},${n(d.whHLoad + d.whHUnload)},,,,,${n(whCost)},${n(whSell)},${n(whMargin)},${whMarginPct !== null ? n(whMarginPct) : 'N/A'}\n`;
   (calc.intCalcs || []).forEach(s => {
-    csv += `Interno,${esc(s.role)},${s.count},${n(s.costHour)},${n(s.hOrd)},${n(s.hStr)},${n(s.hFest)},${n(s.hNott)},${n(s.total)},${n(s.sellTotal || 0)},${n((s.sellTotal || 0) - s.total)}\n`;
+    const margin = (s.sellTotal || 0) - s.total;
+    const marginPct = (s.sellTotal || 0) > 0 ? (margin / s.sellTotal) * 100 : null;
+    csv += `Interno,${esc(s.role)},${s.count},${n(s.costHour)},${n(s.hOrd)},${n(s.hStr)},${n(s.hFest)},${n(s.hNott)},${n(s.total)},${n(s.sellTotal || 0)},${n(margin)},${marginPct !== null ? n(marginPct) : 'N/A'}\n`;
   });
   (calc.extCalcs || []).forEach(s => {
-    csv += `Esterno,${esc(s.role)},${s.count},${n(s.costHour)},${n(s.hOrd)},${n(s.hStr)},${n(s.hFest)},${n(s.hNott)},${n(s.total)},${n(s.sellTotal || 0)},${n((s.sellTotal || 0) - s.total)}\n`;
+    const margin = (s.sellTotal || 0) - s.total;
+    const marginPct = (s.sellTotal || 0) > 0 ? (margin / s.sellTotal) * 100 : null;
+    csv += `Esterno,${esc(s.role)},${s.count},${n(s.costHour)},${n(s.hOrd)},${n(s.hStr)},${n(s.hFest)},${n(s.hNott)},${n(s.total)},${n(s.sellTotal || 0)},${n(margin)},${marginPct !== null ? n(marginPct) : 'N/A'}\n`;
   });
-  csv += `TOTALE STAFF,,,,,,,,${n(calc.totalAllStaff)},${n(calc.totalStaffRevenue)},${n(calc.totalStaffMargin)}\n\n`;
+  csv += `TOTALE STAFF,,,,,,,,${n(calc.totalAllStaff)},${n(calc.totalStaffRevenue)},${n(calc.totalStaffMargin)},${calc.totalStaffMarginPct !== null ? n(calc.totalStaffMarginPct) : 'N/A'}\n\n`;
 
   // Other costs
   csv += `--- ALTRI COSTI ---\n`;
@@ -246,6 +666,7 @@ export function generateInternalCSV(projectData, calc) {
   csv += `Danni & Extra,${n(calc.totalDmg)}\n`;
   csv += `Varie,${n(calc.totalMisc)}\n`;
   csv += `Ammortamenti,${n(calc.totalDepreciation)}\n`;
+  csv += `Fee Agenzia (${(d.agencyFeeType || 'percent') === 'percent' ? (d.agencyFeeValue || 0) + '%' : 'fisso'}),${n(calc.agencyFeeTotal || 0)}\n`;
   csv += `Contingency,${n(calc.contingencyAmt)}\n`;
   csv += `Costo Finanziario,${n(calc.financialCost)}\n`;
 
@@ -267,7 +688,7 @@ export function downloadCSV(csv, filename) {
 // ═══════════════════════════════════════════════════════════════
 // 3. EXPORT DROPDOWN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function ExportDropdown({ projectData, calc, appConfig, style = {} }) {
+export default function ExportDropdown({ projectData, calc, appConfig, selectedSubprojectId = null, style = {} }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -279,15 +700,18 @@ export default function ExportDropdown({ projectData, calc, appConfig, style = {
 
   const handlePDF = () => {
     setOpen(false);
-    const html = generatePDFQuote(projectData, calc, appConfig);
-    openPDFPreview(html);
+    setTimeout(() => {
+      generateAnalyticalPDF(projectData, calc, appConfig, selectedSubprojectId);
+    }, 100);
   };
 
   const handleCSV = () => {
     setOpen(false);
-    const csv = generateInternalCSV(projectData, calc);
-    const name = (projectData.projectCode || projectData.projectName || 'export').replace(/[^a-zA-Z0-9_-]/g, '_');
-    downloadCSV(csv, `${name}_dati_tecnici.csv`);
+    setTimeout(() => {
+      const csv = generateInternalCSV(projectData, calc);
+      const name = (projectData.projectCode || projectData.projectName || 'export').replace(/[^a-zA-Z0-9_-]/g, '_');
+      downloadCSV(csv, `${name}_dati_tecnici.csv`);
+    }, 100);
   };
 
   return (
@@ -323,8 +747,8 @@ export default function ExportDropdown({ projectData, calc, appConfig, style = {
           >
             <span style={{ fontSize: 20 }}>📄</span>
             <div>
-              <div>Preventivo Cliente (PDF)</div>
-              <div style={{ fontSize: 10, color: '#888', fontWeight: 400 }}>Solo prezzi di vendita, nessun costo interno</div>
+              <div>Report Analitico (PDF)</div>
+              <div style={{ fontSize: 10, color: '#888', fontWeight: 400 }}>Report completo: costi, margini, fornitori, volumi</div>
             </div>
           </button>
           <div style={{ height: 1, background: '#e2e8f0' }} />
