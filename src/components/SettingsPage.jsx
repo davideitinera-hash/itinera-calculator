@@ -309,6 +309,7 @@ function SuppliersSection() {
   };
 
   const loadDetail = async (supplier) => {
+    if (detailId === supplier.id) { closeDetail(); return; }
     setDetailId(supplier.id);
     setTxSearch('');
     setDetailLoading(true);
