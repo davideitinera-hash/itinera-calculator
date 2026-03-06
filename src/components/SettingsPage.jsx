@@ -206,64 +206,234 @@ function StaffRolesSection({ data, onSave, saving }) {
   );
 }
 
-function SuppliersSection({ supplierCategories }) {
+function SuppliersSection() {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name: '', category: 'other', contact_person: '', email: '', phone: '', website: '', address: '', vat_number: '', payment_terms: '30 giorni', rating: 3, notes: '' });
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [search, setSearch] = useState('');
-  const loadSuppliers = async () => { setLoading(true); const { data } = await supabase.from('suppliers').select('*').eq('is_active', true).order('name'); if (data) setSuppliers(data); setLoading(false); };
-  useEffect(() => { loadSuppliers(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const resetForm = () => { setForm({ name: '', category: 'other', contact_person: '', email: '', phone: '', website: '', address: '', vat_number: '', payment_terms: '30 giorni', rating: 3, notes: '' }); setEditId(null); setShowAdd(false); };
-  const saveSupplier = async () => { if (!form.name) return; if (editId) { await supabase.from('suppliers').update(form).eq('id', editId); } else { await supabase.from('suppliers').insert(form); } resetForm(); loadSuppliers(); };
-  const deleteSupplier = async (id, name) => { if (!window.confirm('Eliminare "' + name + '"?')) return; await supabase.from('suppliers').update({ is_active: false }).eq('id', id); loadSuppliers(); };
-  const editSupplier = (s) => { setForm({ name: s.name, category: s.category, contact_person: s.contact_person, email: s.email, phone: s.phone, website: s.website, address: s.address, vat_number: s.vat_number, payment_terms: s.payment_terms, rating: s.rating, notes: s.notes }); setEditId(s.id); setShowAdd(true); };
-  const cats = supplierCategories?.items || [];
-  const filtered = suppliers.filter(s => search === '' || s.name.toLowerCase().includes(search.toLowerCase()) || s.category.toLowerCase().includes(search.toLowerCase()));
-  const stars = (n) => String.fromCharCode(9733).repeat(n) + String.fromCharCode(9734).repeat(5 - n);
+  const [catFilter, setCatFilter] = useState('all');
+  const [actionMsg, setActionMsg] = useState('');
+  const [form, setForm] = useState({
+    name: '', category: 'other', contact_person: '', email: '', phone: '',
+    website: '', address: '', vat_number: '', payment_terms: '', rating: 3,
+    notes: '', specializations: [], is_active: true,
+  });
+
+  const CATEGORIES = [
+    { value: 'rental', label: 'Noleggio' },
+    { value: 'catering', label: 'Catering' },
+    { value: 'transport', label: 'Trasporti' },
+    { value: 'staffing', label: 'Personale' },
+    { value: 'floral', label: 'Floreale' },
+    { value: 'lighting', label: 'Illuminazione' },
+    { value: 'audio_video', label: 'Audio/Video' },
+    { value: 'print', label: 'Stampa' },
+    { value: 'venue', label: 'Location' },
+    { value: 'other', label: 'Altro' },
+  ];
+
+  const loadSuppliers = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('suppliers').select('*').order('name');
+    if (data) setSuppliers(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadSuppliers(); }, []);
+
+  const showMsg = (msg) => { setActionMsg(msg); setTimeout(() => setActionMsg(''), 3000); };
+  const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const resetForm = () => {
+    setForm({ name: '', category: 'other', contact_person: '', email: '', phone: '', website: '', address: '', vat_number: '', payment_terms: '', rating: 3, notes: '', specializations: [], is_active: true });
+    setEditId(null);
+    setShowForm(false);
+  };
+
+  const openEdit = (s) => {
+    setForm({
+      name: s.name || '', category: s.category || 'other', contact_person: s.contact_person || '',
+      email: s.email || '', phone: s.phone || '', website: s.website || '', address: s.address || '',
+      vat_number: s.vat_number || '', payment_terms: s.payment_terms || '', rating: s.rating || 3,
+      notes: s.notes || '', specializations: s.specializations || [], is_active: s.is_active !== false,
+    });
+    setEditId(s.id);
+    setShowForm(true);
+  };
+
+  const saveSupplier = async () => {
+    if (!form.name.trim()) { showMsg('Il nome e obbligatorio'); return; }
+    try {
+      if (editId) {
+        const { error } = await supabase.from('suppliers').update({
+          name: form.name, category: form.category, contact_person: form.contact_person,
+          email: form.email, phone: form.phone, website: form.website, address: form.address,
+          vat_number: form.vat_number, payment_terms: form.payment_terms, rating: form.rating,
+          notes: form.notes, specializations: form.specializations, is_active: form.is_active,
+        }).eq('id', editId);
+        if (error) throw error;
+        showMsg('Fornitore aggiornato');
+      } else {
+        const { error } = await supabase.from('suppliers').insert({
+          name: form.name, category: form.category, contact_person: form.contact_person,
+          email: form.email, phone: form.phone, website: form.website, address: form.address,
+          vat_number: form.vat_number, payment_terms: form.payment_terms, rating: form.rating,
+          notes: form.notes, specializations: form.specializations, is_active: form.is_active,
+        });
+        if (error) throw error;
+        showMsg('Fornitore creato');
+      }
+      resetForm();
+      loadSuppliers();
+    } catch (err) {
+      showMsg('Errore: ' + (err.message || err));
+    }
+  };
+
+  const deleteSupplier = async (id) => {
+    try {
+      const { error } = await supabase.from('suppliers').delete().eq('id', id);
+      if (error) throw error;
+      setConfirmDelete(null);
+      showMsg('Fornitore eliminato');
+      loadSuppliers();
+    } catch (err) {
+      showMsg('Errore eliminazione: ' + (err.message || err));
+    }
+  };
+
+  const filtered = suppliers.filter(s => {
+    if (catFilter !== 'all' && s.category !== catFilter) return false;
+    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !(s.contact_person || '').toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+  const catLabel = (v) => CATEGORIES.find(c => c.value === v)?.label || v;
+
   return (
-    <Card title="Fornitori" desc="Rubrica fornitori">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <Btn onClick={() => { resetForm(); setShowAdd(true); }} color="#16a34a">+ Nuovo Fornitore</Btn>
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cerca fornitore..." style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, outline: 'none' }} />
+    <Card title="Fornitori" desc="Gestione anagrafica fornitori e partner">
+      {actionMsg && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#16a34a', marginBottom: 12, fontWeight: 600 }}>{actionMsg}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Btn onClick={() => { resetForm(); setShowForm(true); }} color="#16a34a">+ Nuovo Fornitore</Btn>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cerca per nome o contatto..."
+          style={{ flex: 1, minWidth: 180, padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }} />
+        <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+          style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}>
+          <option value="all">Tutte le categorie</option>
+          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
       </div>
-      {showAdd && (
+
+      {showForm && (
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 12 }}>{editId ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <Field label="Nome *"><Input value={form.name} onChange={v => set('name', v)} /></Field>
-            <Field label="Categoria"><select value={form.category} onChange={e => set('category', e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}>{cats.map(c => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}</select></Field>
-            <Field label="Rating"><div style={{ display: 'flex', gap: 4 }}>{[1, 2, 3, 4, 5].map(n => <span key={n} onClick={() => set('rating', n)} style={{ cursor: 'pointer', fontSize: 20, color: n <= form.rating ? '#f59e0b' : '#e2e8f0' }}>{String.fromCharCode(9733)}</span>)}</div></Field>
-            <Field label="Referente"><Input value={form.contact_person} onChange={v => set('contact_person', v)} /></Field>
-            <Field label="Email"><Input type="email" value={form.email} onChange={v => set('email', v)} /></Field>
-            <Field label="Telefono"><Input value={form.phone} onChange={v => set('phone', v)} /></Field>
-            <Field label="Website"><Input value={form.website} onChange={v => set('website', v)} /></Field>
-            <Field label="P.IVA"><Input value={form.vat_number} onChange={v => set('vat_number', v)} /></Field>
-            <Field label="Termini Pagamento"><Input value={form.payment_terms} onChange={v => set('payment_terms', v)} /></Field>
+            <Field label="Nome *"><Input value={form.name} onChange={v => updateField('name', v)} placeholder="Nome azienda" /></Field>
+            <Field label="Categoria">
+              <select value={form.category} onChange={e => updateField('category', e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}>
+                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Contatto"><Input value={form.contact_person} onChange={v => updateField('contact_person', v)} /></Field>
+            <Field label="Email"><Input type="email" value={form.email} onChange={v => updateField('email', v)} /></Field>
+            <Field label="Telefono"><Input value={form.phone} onChange={v => updateField('phone', v)} /></Field>
+            <Field label="Sito Web"><Input value={form.website} onChange={v => updateField('website', v)} /></Field>
+            <Field label="Indirizzo"><Input value={form.address} onChange={v => updateField('address', v)} /></Field>
+            <Field label="P.IVA"><Input value={form.vat_number} onChange={v => updateField('vat_number', v)} /></Field>
+            <Field label="Condizioni Pagamento"><Input value={form.payment_terms} onChange={v => updateField('payment_terms', v)} placeholder="es. 30gg DFFM" /></Field>
+            <Field label="Rating">
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                {[1, 2, 3, 4, 5].map(n => (
+                  <button key={n} onClick={() => updateField('rating', n)}
+                    style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: n <= form.rating ? '#f59e0b' : '#e2e8f0' }}>★</button>
+                ))}
+                <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>{form.rating}/5</span>
+              </div>
+            </Field>
+            <Field label="Attivo">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+                <input type="checkbox" checked={form.is_active} onChange={e => updateField('is_active', e.target.checked)} />
+                Fornitore attivo
+              </label>
+            </Field>
           </div>
-          <Field label="Indirizzo"><Input value={form.address} onChange={v => set('address', v)} /></Field>
-          <Field label="Note"><Input value={form.notes} onChange={v => set('notes', v)} /></Field>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><Btn onClick={saveSupplier}>{editId ? 'Aggiorna' : 'Salva'}</Btn><Btn onClick={resetForm} color="#64748b">Annulla</Btn></div>
+          <Field label="Note">
+            <textarea value={form.notes} onChange={e => updateField('notes', e.target.value)} rows={2}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          </Field>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <Btn onClick={saveSupplier}>{editId ? 'Aggiorna' : 'Crea Fornitore'}</Btn>
+            <Btn onClick={resetForm} color="#64748b">Annulla</Btn>
+          </div>
         </div>
       )}
-      {loading ? <div style={{ color: '#94a3b8' }}>Caricamento...</div> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr style={{ borderBottom: '2px solid #e2e8f0' }}><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>NOME</th><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>CATEGORIA</th><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>CONTATTO</th><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>RATING</th><th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: 10 }}>AZIONI</th></tr></thead>
-          <tbody>{filtered.map(s => {
-            const cat = cats.find(c => c.value === s.category); return (
-              <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+
+      {loading ? <div style={{ color: '#94a3b8', fontSize: 13 }}>Caricamento...</div> : filtered.length === 0 ? (
+        <div style={{ color: '#94a3b8', fontSize: 13, padding: 20, textAlign: 'center' }}>
+          {suppliers.length === 0 ? 'Nessun fornitore. Clicca "+ Nuovo Fornitore" per iniziare.' : 'Nessun risultato con i filtri attuali.'}
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Nome</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Categoria</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Contatto</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Email / Tel</th>
+                <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Rating</th>
+                <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Stato</th>
+                <th style={{ padding: '8px', textAlign: 'right', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>{filtered.map(s => (
+              <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: s.is_active === false ? 0.5 : 1 }}>
                 <td style={{ padding: '8px', fontWeight: 600 }}>{s.name}</td>
-                <td style={{ padding: '8px' }}>{cat ? cat.icon + ' ' + cat.label : s.category}</td>
-                <td style={{ padding: '8px', color: '#64748b' }}>{s.contact_person}{s.email ? ' | ' + s.email : ''}{s.phone ? ' | ' + s.phone : ''}</td>
-                <td style={{ padding: '8px', color: '#f59e0b' }}>{stars(s.rating)}</td>
-                <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}><button onClick={() => editSupplier(s)} style={{ background: '#2E86AB', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600, marginRight: 4 }}>Modifica</button><button onClick={() => deleteSupplier(s.id, s.name)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>Elimina</button></td>
-              </tr>);
-          })}</tbody>
-        </table>
+                <td style={{ padding: '8px' }}>
+                  <span style={{ background: '#eff6ff', color: '#2E86AB', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{catLabel(s.category)}</span>
+                </td>
+                <td style={{ padding: '8px', color: '#475569' }}>{s.contact_person || '—'}</td>
+                <td style={{ padding: '8px', color: '#475569' }}>
+                  <div>{s.email || '—'}</div>
+                  {s.phone && <div style={{ fontSize: 10, color: '#94a3b8' }}>{s.phone}</div>}
+                </td>
+                <td style={{ padding: '8px', textAlign: 'center', color: '#f59e0b', fontSize: 14, letterSpacing: 1 }}>{stars(s.rating || 0)}</td>
+                <td style={{ padding: '8px', textAlign: 'center' }}>
+                  <span style={{ background: s.is_active !== false ? '#dcfce7' : '#fef2f2', color: s.is_active !== false ? '#16a34a' : '#dc2626', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>
+                    {s.is_active !== false ? 'Attivo' : 'Inattivo'}
+                  </span>
+                </td>
+                <td style={{ padding: '8px', textAlign: 'right' }}>
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                    <button onClick={() => openEdit(s)}
+                      style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#2E86AB' }}>Modifica</button>
+                    <button onClick={() => setConfirmDelete(s.id)}
+                      style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#dc2626' }}>Elimina</button>
+                  </div>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
       )}
-      <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>{filtered.length} fornitori</div>
+
+      {confirmDelete && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>Conferma eliminazione di: {suppliers.find(s => s.id === confirmDelete)?.name || '—'}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Questa azione e irreversibile.</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={() => deleteSupplier(confirmDelete)} color="#dc2626">Conferma Eliminazione</Btn>
+            <Btn onClick={() => setConfirmDelete(null)} color="#64748b">Annulla</Btn>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
