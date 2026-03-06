@@ -497,19 +497,132 @@ function UnitsSection({ data, onSave, saving }) {
 function AuditLogSection() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const loadLogs = async () => { setLoading(true); const { data } = await supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(100); if (data) setLogs(data); setLoading(false); };
-  useEffect(() => { loadLogs(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  const [filter, setFilter] = useState('all');
+  const [entityFilter, setEntityFilter] = useState('all');
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 25;
+
+  const loadLogs = async () => {
+    setLoading(true);
+    let query = supabase
+      .from('audit_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+    if (filter !== 'all') query = query.eq('action', filter);
+    if (entityFilter !== 'all') query = query.eq('entity_type', entityFilter);
+
+    const { data } = await query;
+    if (data) setLogs(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadLogs(); }, [page, filter, entityFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ACTION_BADGE = {
+    INSERT: { bg: '#dcfce7', color: '#16a34a', label: 'Creato' },
+    UPDATE: { bg: '#fef3c7', color: '#d97706', label: 'Modificato' },
+    DELETE: { bg: '#fef2f2', color: '#dc2626', label: 'Eliminato' },
+  };
+
+  const ENTITY_LABELS = {
+    projects: 'Progetto',
+    subprojects: 'Sottoprogetto',
+    equipment_items: 'Materiale',
+    cost_entries: 'Costo Extra',
+    staff_entries: 'Personale',
+    transport_legs: 'Trasporto',
+    profiles: 'Utente',
+    suppliers: 'Fornitore',
+    app_config: 'Configurazione',
+  };
+
+  const formatDate = (d) => {
+    const dt = new Date(d);
+    return dt.toLocaleDateString('it-IT') + ' ' + dt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
-    <Card title="Audit Log" desc="Registro modifiche (ultime 100)">
-      <Btn onClick={loadLogs} small>Aggiorna</Btn>
-      {loading ? <div style={{ color: '#94a3b8', marginTop: 12 }}>Caricamento...</div> : logs.length === 0 ? (
-        <div style={{ color: '#94a3b8', marginTop: 12 }}>Nessuna attivita registrata.</div>
+    <Card title="Audit Log" desc="Cronologia delle modifiche al sistema">
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Azione:</span>
+          <select value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}
+            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}>
+            <option value="all">Tutte</option>
+            <option value="INSERT">Creazioni</option>
+            <option value="UPDATE">Modifiche</option>
+            <option value="DELETE">Eliminazioni</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Entita:</span>
+          <select value={entityFilter} onChange={e => { setEntityFilter(e.target.value); setPage(0); }}
+            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}>
+            <option value="all">Tutte</option>
+            <option value="projects">Progetti</option>
+            <option value="subprojects">Sottoprogetti</option>
+            <option value="equipment_items">Materiali</option>
+            <option value="cost_entries">Costi Extra</option>
+            <option value="staff_entries">Personale</option>
+            <option value="transport_legs">Trasporti</option>
+            <option value="profiles">Utenti</option>
+            <option value="suppliers">Fornitori</option>
+            <option value="app_config">Configurazione</option>
+          </select>
+        </div>
+        <button onClick={() => { setFilter('all'); setEntityFilter('all'); setPage(0); }}
+          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 11, cursor: 'pointer', background: '#f8fafc', color: '#64748b' }}>
+          Reset filtri
+        </button>
+      </div>
+
+      {loading ? <div style={{ color: '#94a3b8', fontSize: 13 }}>Caricamento...</div> : logs.length === 0 ? (
+        <div style={{ color: '#94a3b8', fontSize: 13, padding: 20, textAlign: 'center' }}>Nessun evento trovato</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginTop: 12 }}>
-          <thead><tr style={{ borderBottom: '2px solid #e2e8f0' }}><th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>DATA</th><th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>UTENTE</th><th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>AZIONE</th><th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>ENTITA</th></tr></thead>
-          <tbody>{logs.map(l => (<tr key={l.id} style={{ borderBottom: '1px solid #f1f5f9' }}><td style={{ padding: '6px 8px', color: '#94a3b8' }}>{new Date(l.created_at).toLocaleString('it-IT')}</td><td style={{ padding: '6px 8px' }}>{l.user_name}</td><td style={{ padding: '6px 8px', fontWeight: 600 }}>{l.action}</td><td style={{ padding: '6px 8px' }}>{l.entity_type} {l.entity_name ? '- ' + l.entity_name : ''}</td></tr>))}</tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Data</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Utente</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Azione</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Tipo</th>
+                <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Elemento</th>
+              </tr>
+            </thead>
+            <tbody>{logs.map(l => {
+              const badge = ACTION_BADGE[l.action] || { bg: '#f1f5f9', color: '#333', label: l.action };
+              return (
+                <tr key={l.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '8px', color: '#64748b', whiteSpace: 'nowrap' }}>{formatDate(l.created_at)}</td>
+                  <td style={{ padding: '8px', fontWeight: 600 }}>{l.user_name || '—'}</td>
+                  <td style={{ padding: '8px' }}>
+                    <span style={{ background: badge.bg, color: badge.color, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
+                      {badge.label}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px', color: '#475569' }}>{ENTITY_LABELS[l.entity_type] || l.entity_type}</td>
+                  <td style={{ padding: '8px', color: '#475569', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.entity_name || '—'}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
       )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+          style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 11, cursor: page === 0 ? 'default' : 'pointer', background: page === 0 ? '#f8fafc' : '#fff', color: page === 0 ? '#cbd5e1' : '#2E86AB' }}>
+          Precedente
+        </button>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>Pagina {page + 1}</span>
+        <button onClick={() => setPage(p => p + 1)} disabled={logs.length < PAGE_SIZE}
+          style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 11, cursor: logs.length < PAGE_SIZE ? 'default' : 'pointer', background: logs.length < PAGE_SIZE ? '#f8fafc' : '#fff', color: logs.length < PAGE_SIZE ? '#cbd5e1' : '#2E86AB' }}>
+          Successiva
+        </button>
+      </div>
     </Card>
   );
 }
