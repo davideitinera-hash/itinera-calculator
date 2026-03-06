@@ -524,26 +524,140 @@ function UsersSection() {
   const [newRole, setNewRole] = useState('editor');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
-  const loadUsers = async () => { setLoading(true); const { data } = await supabase.from('profiles').select('*').order('created_at'); if (data) setUsers(data); setLoading(false); };
+  const [actionMsg, setActionMsg] = useState('');
+  const [resetPwUser, setResetPwUser] = useState(null);
+  const [resetPwValue, setResetPwValue] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('profiles').select('*').order('created_at');
+    if (data) setUsers(data);
+    setLoading(false);
+  };
+
   useEffect(() => { loadUsers(); }, []);
-  const updateRole = async (userId, role) => { await supabase.from('profiles').update({ role }).eq('id', userId); loadUsers(); };
-  const updateName = async (userId, name) => { await supabase.from('profiles').update({ full_name: name }).eq('id', userId); };
+
+  const showMsg = (msg) => { setActionMsg(msg); setTimeout(() => setActionMsg(''), 3000); };
+
+  const getSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Sessione scaduta. Effettua di nuovo il login.');
+    return session;
+  };
+
+  const updateRole = async (userId, role) => {
+    const { error: err } = await supabase.from('profiles').update({ role }).eq('id', userId);
+    if (err) { showMsg('Errore aggiornamento ruolo'); return; }
+    showMsg('Ruolo aggiornato');
+    loadUsers();
+  };
+
+  const updateName = async (userId, name) => {
+    await supabase.from('profiles').update({ full_name: name }).eq('id', userId);
+  };
+
   const createUser = async () => {
-    if (!newEmail || !newPassword || newPassword.length < 6) { setError('Email e password (min 6 caratteri) obbligatori'); return; }
-    setCreating(true); setError('');
+    if (!newEmail || !newPassword || newPassword.length < 6) {
+      setError('Email e password (min 6 caratteri) obbligatori');
+      return;
+    }
+    setCreating(true);
+    setError('');
     try {
-      const { data, error: err } = await supabase.auth.signUp({ email: newEmail, password: newPassword, options: { data: { full_name: newName || newEmail } } });
-      if (err) throw err;
-      if (data?.user) await supabase.from('profiles').upsert({ id: data.user.id, full_name: newName || newEmail, role: newRole });
+      const session = await getSession();
+      const response = await fetch(
+        'https://vzuxutnrslptszqsxtbv.supabase.co/functions/v1/create-user',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            email: newEmail,
+            password: newPassword,
+            full_name: newName || newEmail.split('@')[0],
+            role: newRole,
+          }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Errore nella creazione utente');
       setNewEmail(''); setNewPassword(''); setNewName(''); setNewRole('editor'); setShowAdd(false);
-      setTimeout(loadUsers, 1000);
-    } catch (err) { setError(err.message || 'Errore'); }
+      showMsg(result.message || 'Utente creato con successo');
+      setTimeout(loadUsers, 500);
+    } catch (err) {
+      setError(err.message || 'Errore nella creazione utente');
+    }
     setCreating(false);
   };
+
+  const deleteUser = async (userId) => {
+    try {
+      const session = await getSession();
+      const response = await fetch(
+        'https://vzuxutnrslptszqsxtbv.supabase.co/functions/v1/manage-user',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ action: 'delete', user_id: userId }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Errore eliminazione');
+      setConfirmDelete(null);
+      showMsg('Utente eliminato');
+      loadUsers();
+    } catch (err) {
+      showMsg(err.message || 'Errore eliminazione');
+    }
+  };
+
+  const resetPassword = async (userId) => {
+    if (!resetPwValue || resetPwValue.length < 6) {
+      showMsg('La password deve avere almeno 6 caratteri');
+      return;
+    }
+    try {
+      const session = await getSession();
+      const response = await fetch(
+        'https://vzuxutnrslptszqsxtbv.supabase.co/functions/v1/manage-user',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ action: 'reset_password', user_id: userId, new_password: resetPwValue }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Errore reset password');
+      setResetPwUser(null);
+      setResetPwValue('');
+      showMsg('Password aggiornata');
+    } catch (err) {
+      showMsg(err.message || 'Errore reset password');
+    }
+  };
+
   const ROLE_COLORS = { admin: '#dc2626', editor: '#2E86AB', viewer: '#64748b' };
+
   return (
     <Card title="Gestione Utenti" desc="Aggiungi utenti e gestisci ruoli">
-      {!showAdd ? <div style={{ marginBottom: 16 }}><Btn onClick={() => setShowAdd(true)} color="#16a34a">+ Aggiungi Utente</Btn></div> : (
+      {actionMsg && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#16a34a', marginBottom: 12, fontWeight: 600 }}>{actionMsg}</div>
+      )}
+
+      {!showAdd ? (
+        <div style={{ marginBottom: 16 }}>
+          <Btn onClick={() => setShowAdd(true)} color="#16a34a">+ Aggiungi Utente</Btn>
+        </div>
+      ) : (
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 12 }}>Nuovo Utente</div>
           {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#dc2626', marginBottom: 12 }}>{error}</div>}
@@ -551,16 +665,84 @@ function UsersSection() {
             <Field label="Nome"><Input value={newName} onChange={v => setNewName(v)} placeholder="Mario Rossi" /></Field>
             <Field label="Email *"><Input type="email" value={newEmail} onChange={v => setNewEmail(v)} placeholder="mario@itinerapro.com" /></Field>
             <Field label="Password *"><Input type="password" value={newPassword} onChange={v => setNewPassword(v)} placeholder="Minimo 6 caratteri" /></Field>
-            <Field label="Ruolo"><select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></Field>
+            <Field label="Ruolo">
+              <select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13 }}>
+                <option value="editor">Editor</option>
+                <option value="viewer">Viewer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </Field>
           </div>
-          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}><Btn onClick={createUser} disabled={creating}>{creating ? 'Creazione...' : 'Crea Utente'}</Btn><Btn onClick={() => { setShowAdd(false); setError(''); }} color="#64748b">Annulla</Btn></div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <Btn onClick={createUser} disabled={creating}>{creating ? 'Creazione...' : 'Crea Utente'}</Btn>
+            <Btn onClick={() => { setShowAdd(false); setError(''); }} color="#64748b">Annulla</Btn>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>L'utente ricevera un'email di conferma prima di poter accedere.</div>
         </div>
       )}
-      {loading ? <div style={{ color: '#94a3b8' }}>Caricamento...</div> : (
+
+      {loading ? <div style={{ color: '#94a3b8', fontSize: 13 }}>Caricamento...</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr style={{ borderBottom: '2px solid #e2e8f0' }}><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>NOME</th><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>RUOLO</th><th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10 }}>DATA</th></tr></thead>
-          <tbody>{users.map(u => (<tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}><td style={{ padding: '8px' }}><input value={u.full_name} onChange={e => { const v = e.target.value; setUsers(p => p.map(x => x.id === u.id ? { ...x, full_name: v } : x)); }} onBlur={() => updateName(u.id, u.full_name)} style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '4px 8px', fontSize: 12, fontWeight: 600, width: '100%', boxSizing: 'border-box' }} /></td><td style={{ padding: '8px' }}><select value={u.role} onChange={e => updateRole(u.id, e.target.value)} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600, color: ROLE_COLORS[u.role], cursor: 'pointer' }}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select></td><td style={{ padding: '8px', color: '#94a3b8' }}>{new Date(u.created_at).toLocaleDateString('it-IT')}</td></tr>))}</tbody>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Nome</th>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Ruolo</th>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Data</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>{users.map(u => (
+            <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '8px' }}>
+                <input value={u.full_name || ''} onChange={e => { const v = e.target.value; setUsers(p => p.map(x => x.id === u.id ? { ...x, full_name: v } : x)); }}
+                  onBlur={() => updateName(u.id, u.full_name)}
+                  style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '4px 8px', fontSize: 12, fontWeight: 600, width: '100%', boxSizing: 'border-box' }} />
+              </td>
+              <td style={{ padding: '8px' }}>
+                <select value={u.role} onChange={e => updateRole(u.id, e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600, color: ROLE_COLORS[u.role] || '#333', cursor: 'pointer' }}>
+                  <option value="admin">Admin</option>
+                  <option value="editor">Editor</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </td>
+              <td style={{ padding: '8px', color: '#94a3b8' }}>{new Date(u.created_at).toLocaleDateString('it-IT')}</td>
+              <td style={{ padding: '8px', textAlign: 'right' }}>
+                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setResetPwUser(u.id); setResetPwValue(''); }}
+                    style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#2E86AB' }}
+                    title="Reset password">Password</button>
+                  <button onClick={() => setConfirmDelete(u.id)}
+                    style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#dc2626' }}
+                    title="Elimina utente">Elimina</button>
+                </div>
+              </td>
+            </tr>
+          ))}</tbody>
         </table>
+      )}
+
+      {resetPwUser && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 12, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Reset Password per: {users.find(u => u.id === resetPwUser)?.full_name || '—'}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="password" value={resetPwValue} onChange={e => setResetPwValue(e.target.value)} placeholder="Nuova password (min 6 caratteri)"
+              style={{ flex: 1, padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }} />
+            <Btn onClick={() => resetPassword(resetPwUser)}>Salva</Btn>
+            <Btn onClick={() => { setResetPwUser(null); setResetPwValue(''); }} color="#64748b">Annulla</Btn>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>Conferma eliminazione di: {users.find(u => u.id === confirmDelete)?.full_name || '—'}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Questa azione e' irreversibile. L'utente non potra' piu' accedere.</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={() => deleteUser(confirmDelete)} color="#dc2626">Conferma Eliminazione</Btn>
+            <Btn onClick={() => setConfirmDelete(null)} color="#64748b">Annulla</Btn>
+          </div>
+        </div>
       )}
     </Card>
   );

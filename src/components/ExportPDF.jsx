@@ -127,6 +127,7 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
       `Vitto/Alloggio: €${fmt(calc.totalAccom)}`,
       `Fee Agenzia: €${fmt(calc.agencyFeeTotal || 0)}`,
       `Contingency: €${fmt(calc.contingencyAmt)}`,
+      `Ammort.: €${fmt(calc.amortCost || 0)}`,
       `Fin.: €${fmt(calc.financialCost)}`,
     ];
     doc.text(breakdown.join('   |   '), 10, y);
@@ -414,7 +415,8 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
       ['Costi Analitici', `€ ${fmt(calc.totalAn)}`],
       ['Danni & Extra', `€ ${fmt(calc.totalDmg)}`],
       ['Varie', `€ ${fmt(calc.totalMisc)}`],
-      ['Ammortamenti', `€ ${fmt(calc.totalDepreciation)}`],
+      ['Ammortamenti (calcolato)', `€ ${fmt(calc.totalDepreciation)}`],
+      ...(selectedSubprojectId === null && (projectData.amortization || 0) > 0 ? [['Ammortamento materiale (manuale)', `€ ${fmt(projectData.amortization)}`]] : []),
       [`Fee Agenzia / WP (${(d.agencyFeeType || 'percent') === 'percent' ? (d.agencyFeeValue || 0) + '%' : 'fisso'})`, `€ ${fmt(calc.agencyFeeTotal || 0)}`],
       ['Contingency', `€ ${fmt(calc.contingencyAmt)}`],
       ['Costo Finanziario', `€ ${fmt(calc.financialCost)}`],
@@ -491,7 +493,8 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
       // SECTION: COSTI OPERATIVI
       ['COSTI OPERATIVI', '', '', { header: true }],
       ['  Materiale + Sub + Acquisti', `€ ${fmtD(calc.costMaterial)}`, `${calc.revenueNet > 0 ? fmtD(calc.costMaterial / calc.revenueNet * 100) : '0'}%`, {}],
-      ['  Ammortamento materiale proprio', `€ ${fmtD(calc.totalDepreciation)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalDepreciation / calc.revenueNet * 100) : '0'}%`, {}],
+      ['  Ammortamento materiale (calcolato)', `€ ${fmtD(calc.totalDepreciation)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalDepreciation / calc.revenueNet * 100) : '0'}%`, {}],
+      ...(selectedSubprojectId === null && (projectData.amortization || 0) > 0 ? [['  Ammortamento materiale (manuale)', `€ ${fmtD(projectData.amortization)}`, `${calc.revenueNet > 0 ? fmtD(projectData.amortization / calc.revenueNet * 100) : '0'}%`, {}]] : []),
       ['  Trasporto', `€ ${fmtD(calc.totalTransport)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalTransport / calc.revenueNet * 100) : '0'}%`, {}],
       ['  Personale (campo + magazzino)', `€ ${fmtD(calc.totalAllStaff)}`, `${calc.revenueNet > 0 ? fmtD(calc.totalAllStaff / calc.revenueNet * 100) : '0'}%`, {}],
       // SEPARATOR

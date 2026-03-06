@@ -117,13 +117,24 @@ export const syncSubprojects = async (projectId, rentmanSubprojects) => {
 
         if (upsertError) throw upsertError;
 
-        // 4. Costruisci e ritorna la mappa rentmanId → supabase UUID
+        // 4. Cleanup zombie subprojects (locali con rentman_id non più in arrivo)
+        const incomingRentmanIds = new Set(rentmanSubprojects.map(sp => sp.rentmanId));
+        const zombieIds = existingList
+            .filter(sp => sp.rentman_subproject_id && !incomingRentmanIds.has(sp.rentman_subproject_id))
+            .map(sp => sp.id);
+        if (zombieIds.length > 0) {
+            console.log('[Sync Service] Deleting zombie subprojects:', zombieIds);
+            const { error: delError } = await supabase.from('subprojects').delete().in('id', zombieIds);
+            if (delError) console.error('[Sync Service] Zombie delete error:', delError);
+        }
+
+        // 5. Costruisci e ritorna la mappa rentmanId → supabase UUID
         const subprojectMap = {};
         (upsertedData || []).forEach(sp => {
             subprojectMap[sp.rentman_subproject_id] = sp.id;
         });
 
-        console.log(`[Sync Service] ✅ ${Object.keys(subprojectMap).length} sottoprogetti sincronizzati`);
+        console.log(`[Sync Service] ✅ ${Object.keys(subprojectMap).length} sottoprogetti sincronizzati, ${zombieIds.length} zombie rimossi`);
         return subprojectMap;
 
     } catch (error) {

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSupabaseProject } from './hooks/useSupabaseProject';
+import { useCalculations } from './hooks/useCalculations';
 import { useAppConfig } from './hooks/useAppConfig';
 import { supabase } from './lib/supabaseClient';
 import { useResponsive } from './hooks/useResponsive';
@@ -13,6 +14,7 @@ import { ProductionSection } from './components/ProductionSection';
 import SyncHistoryModal from './components/SyncHistoryModal';
 import SyncDiffModal from './components/SyncDiffModal';
 import { useToast } from './components/Toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // ═══ CONFIG ═══
 const DIESEL = 1.666;
@@ -60,7 +62,7 @@ const M = ({ label, value, color, s }) => (
   </div>
 );
 const Card = ({ title, icon, children, accent, open, onToggle, right }) => (
-  <div className="no-print" style={{ background: "#fff", borderRadius: 10, border: `1px solid ${accent || "#e0e6ed"}`, borderTop: `3px solid ${accent || "#2E86AB"}`, marginBottom: 10, overflow: "hidden" }}>
+  <div className="no-print" style={{ background: "#fff", borderRadius: 10, border: `1px solid ${accent || "#e0e6ed"}`, borderTop: `3px solid ${accent || "#2E86AB"}`, marginBottom: 10, overflow: open === false ? "hidden" : "visible" }}>
     <div onClick={onToggle} style={{ padding: "9px 14px", cursor: onToggle ? "pointer" : "default", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <span style={{ fontWeight: 700, fontSize: 11, color: "#1B3A5C", textTransform: "uppercase", letterSpacing: 0.3 }}>{icon} {title}</span>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -68,12 +70,31 @@ const Card = ({ title, icon, children, accent, open, onToggle, right }) => (
         {onToggle && <span style={{ fontSize: 13, color: "#bbb", transform: open ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.25s ease" }}>▼</span>}
       </div>
     </div>
-    <div style={{ overflow: 'hidden', maxHeight: open !== false ? 5000 : 0, opacity: open !== false ? 1 : 0, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+    <div style={{ overflow: open === false ? 'hidden' : 'visible', maxHeight: open !== false ? 5000 : 0, opacity: open !== false ? 1 : 0, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
       <div style={{ padding: "0 14px 12px" }}>{children}</div>
     </div>
   </div>
 );
 const R = ({ children, gap }) => <div className="no-print" style={{ display: "flex", gap: gap || 6, marginBottom: 5, flexWrap: "wrap", alignItems: "end" }}>{children}</div>;
+const InfoTooltip = ({ text }) => (
+  <TooltipProvider delayDuration={200}>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center ml-2 cursor-help align-middle">
+          <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-500 hover:bg-blue-100 hover:text-blue-600 flex items-center justify-center text-[10px] font-bold transition-colors">
+            i
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        className="max-w-[264px] text-[11px] font-normal leading-snug text-center"
+      >
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
 const F = ({ label, value, onChange, type = "number", min, step = 1, w, ph, disabled, vr }) => {
   const [err, setErr] = useState(null);
   const [shaking, setShaking] = useState(false);
@@ -273,7 +294,7 @@ const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delOb
 const EQ_GRID_COLS = "auto 1.6fr 0.9fr 0.4fr 0.4fr 0.4fr 0.4fr 0.4fr 0.45fr 0.5fr 0.5fr 0.5fr 0.5fr 0.35fr 0.55fr 0.55fr auto";
 const EQ_HEADERS = ["", "Descrizione", "Fornitore", "Qty", "Coeff.", "L(m)", "W(m)", "H(m)", "Kg/pz", "m³", "Kg tot", "€/pz", "Vendita €/pz", "", "Costo", "Ricavo", ""];
 
-const EquipmentGrid = ({ items, updateObjList, delObj, showDragHandle = false, showCategoryDropdown = false, getDragProps }) => {
+const EquipmentGrid = ({ items, updateObjList, delObj, showDragHandle = false, showCategoryDropdown = false, showSubprojectDropdown = false, subprojects = [], onCategoryChange, getDragProps }) => {
   const totalCost = items.reduce((s, e) => s + e.cost, 0);
   const totalRevenue = items.reduce((s, e) => s + e.revenue, 0);
   const totalMargin = items.reduce((s, e) => s + e.marginEur, 0);
@@ -313,10 +334,17 @@ const EquipmentGrid = ({ items, updateObjList, delObj, showDragHandle = false, s
             </div>
             <div style={{ display: "flex", gap: 6, marginBottom: 5, paddingLeft: showDragHandle ? 4 : 0, alignItems: "center", flexWrap: "wrap" }}>
               {showCategoryDropdown && (
-                <select value={e.itemCategory || 'Proprio'} onChange={ev => updateObjList("eqItems", e.id, "itemCategory", ev.target.value)} style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: e.itemCategory === 'Sub-noleggio' ? '#e67e22' : e.itemCategory === 'Acquisto' ? '#8e44ad' : '#2E86AB', background: e.itemCategory === 'Sub-noleggio' ? '#fef3e8' : e.itemCategory === 'Acquisto' ? '#f5eef8' : '#eef6fb' }}>
+                <select value={e.itemCategory || 'Proprio'} onChange={ev => { const nv = ev.target.value; if (nv === 'misc') { if (onCategoryChange) onCategoryChange(e, 'equipment_items', 'misc'); } else { updateObjList('eqItems', e.id, 'itemCategory', nv); } }} style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: e.itemCategory === 'Sub-noleggio' ? '#e67e22' : e.itemCategory === 'Acquisto' ? '#8e44ad' : '#2E86AB', background: e.itemCategory === 'Sub-noleggio' ? '#fef3e8' : e.itemCategory === 'Acquisto' ? '#f5eef8' : '#eef6fb' }}>
                   <option value="Proprio">🔵 Proprio</option>
                   <option value="Sub-noleggio">🟠 Sub-noleggio</option>
                   <option value="Acquisto">🟣 Acquisto</option>
+                  <option value="misc">📦 Costo aggiuntivo</option>
+                </select>
+              )}
+              {showSubprojectDropdown && subprojects.length > 0 && (
+                <select value={e.subprojectId || ''} onChange={ev => updateObjList('eqItems', e.id, 'subprojectId', ev.target.value || null)} style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: e.subprojectId ? '#1B3A5C' : '#94a3b8', background: e.subprojectId ? '#eef6fb' : '#f8fafc', minWidth: 100 }}>
+                  <option value="">📍 Globale</option>
+                  {subprojects.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
                 </select>
               )}
               {e.owned && <>
@@ -356,13 +384,13 @@ const EquipmentGrid = ({ items, updateObjList, delObj, showDragHandle = false, s
     </div>
   );
 };
-export default function ItineraV4({ projectId, onBack }) {
+export default function ItineraV4({ projectId, onBack, onOpenCrm, onOpenAccounting }) {
   const [sec, setSec] = useState({});
   const tgl = k => setSec(p => ({ ...p, [k]: p[k] === false ? true : (p[k] === true ? false : false) }));
   const isO = k => sec[k] !== false;
 
   // Global consolidated state (Supabase)
-  const { data: d, loading, syncStatus, updateField, addItem, updateItem, deleteItem, reorderItems, updateProjectMeta, updateSubprojectFinancial, reload } = useSupabaseProject(projectId);
+  const { data: d, loading, syncStatus, updateField, addItem, updateItem, deleteItem, reorderItems, updateProjectMeta, updateSubprojectFinancial, addSubproject, deleteSubproject, renameSubproject, reload } = useSupabaseProject(projectId);
   const { config: appConfig } = useAppConfig();
   const { isMobile } = useResponsive();
   const toast = useToast();
@@ -375,6 +403,10 @@ export default function ItineraV4({ projectId, onBack }) {
   const subprojectMapRef = useRef({});
   const [pendingNotifCount, setPendingNotifCount] = useState(0);
   const [selectedSubprojectId, setSelectedSubprojectId] = useState(null);
+  const [isAddingSub, setIsAddingSub] = useState(false);
+  const [newSubName, setNewSubName] = useState('');
+  const [editingSubId, setEditingSubId] = useState(null);
+  const [editingSubName, setEditingSubName] = useState('');
   const pollingRef = useRef(null);
 
   // ═══ RENTMAN NOTIFICATION POLLING ═══
@@ -397,12 +429,17 @@ export default function ItineraV4({ projectId, onBack }) {
   const acknowledgeNotifications = async () => {
     const rpId = d?.rentmanProjectId;
     if (!rpId) return;
-    await supabase
+    // Bug #6 fix: prima scrivi su Supabase, poi aggiorna l'UI (non il contrario)
+    const { error } = await supabase
       .from('pending_sync_notifications')
       .update({ acknowledged: true })
       .eq('rentman_project_id', rpId)
       .eq('acknowledged', false);
-    setPendingNotifCount(0);
+    if (!error) {
+      setPendingNotifCount(0);
+    } else {
+      console.error('[acknowledgeNotifications] Errore DB:', error);
+    }
   };
 
   const scrollToSection = (id) => {
@@ -428,11 +465,70 @@ export default function ItineraV4({ projectId, onBack }) {
   const OT_MULT_DYN = useMemo(() => appConfig?.overtime || OT_MULT, [appConfig]);
   const DIESEL_DYN = useMemo(() => appConfig?.fuel?.dieselPricePerLiter || DIESEL, [appConfig]);
 
+  // ═══ CALCOLI FINANZIARI (estratti in hook dedicato) ═══
+  const {
+    visibleLegs, visibleAnalytics, visibleDamages, visibleMisc, visiblePhases, visibleAccommodations, visiblePlan, visibleWh,
+    calcEqItems, calcLegs, calcIntStaff, calcExtStaff, calcAnalytics, calcDamages, calcMisc, calcPhases, calcAccommodations, calcPlan, calcWh,
+    calc, visibleEqCalcs, visibleIntCalcs, visibleExtCalcs,
+    vt, spBreakdown, activeAlerts, pricingSuggestion,
+  } = useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, VEH_DYN, OT_MULT_DYN, DIESEL_DYN);
+
   // Helpers to update global state easily
   const updateF = (field, val) => updateField(field, val);
   const updateObjList = (field, id, objField, val) => updateItem(field, id, objField, val);
   const addObj = (field, newObj) => addItem(field, { ...newObj, subprojectId: selectedSubprojectId || null });
   const delObj = (field, id) => deleteItem(field, id);
+
+  // ═══ UNIVERSAL CATEGORY CHANGE (cross-table) ═══
+  const handleCategoryChange = useCallback(async (item, sourceTable, newCategory) => {
+    const destTable = newCategory === 'misc' ? 'cost_entries' : 'equipment_items';
+    if (sourceTable === destTable) {
+      // Same table — simple field update
+      if (sourceTable === 'equipment_items') {
+        updateObjList('eqItems', item.id, 'itemCategory', newCategory);
+      }
+      return;
+    }
+    // Cross-table move — confirm first
+    const label = newCategory === 'misc' ? 'Costo aggiuntivo' : newCategory;
+    if (!window.confirm(`⚠️ Spostare "${item.desc || item.description || ''}" in ${label}? L'item verrà trasferito in un'altra tabella.`)) return;
+    try {
+      if (sourceTable === 'equipment_items' && destTable === 'cost_entries') {
+        await supabase.from('cost_entries').insert({
+          project_id: projectId,
+          subproject_id: item.subprojectId || null,
+          description: item.desc || '',
+          supplier: item.supplier || '',
+          cost: Math.round(((item.qty || 1) * (item.costUnit || 0)) * 100) / 100,
+          quantity: 1,
+          category: 'misc',
+          rentman_id: item.rentmanId || null,
+          revenue: 0
+        });
+        await supabase.from('equipment_items').delete().eq('id', item.id);
+      } else {
+        await supabase.from('equipment_items').insert({
+          project_id: projectId,
+          subproject_id: item.subprojectId || null,
+          description: item.desc || item.description || '',
+          supplier: item.supplier || '',
+          cost_unit: item.cost || 0,
+          qty: item.qty || 1,
+          item_category: newCategory,
+          rentman_id: item.rentmanId || null,
+          coefficient: 1, sell_price: 0, owned: false,
+          l: 0, w: 0, h: 0, weight_kg: 0,
+          purchase_price: 0, total_uses: 1, uses_used: 0
+        });
+        await supabase.from('cost_entries').delete().eq('id', item.id);
+      }
+      await reload();
+      console.log('[CategoryChange] Moved item to', newCategory);
+    } catch (err) {
+      console.error('[CategoryChange] Error:', err);
+      toast.error('Errore spostamento: ' + err.message);
+    }
+  }, [projectId, reload, toast, updateObjList]);
 
   // ═══ PDF IMPORT HANDLER ═══
   const handlePdfImport = useCallback(async (parsed) => {
@@ -496,282 +592,7 @@ export default function ItineraV4({ projectId, onBack }) {
   }, [updateField, addItem, toast]);
 
 
-  // ═══ VISIBLE ITEMS (UI Tables — filtered by selectedSubprojectId) ═══
-  const visibleLegs = useMemo(() => (d?.legs || []).filter(l => (l.subprojectId || null) === selectedSubprojectId), [d?.legs, selectedSubprojectId]);
-  const visibleAnalytics = useMemo(() => (d?.analytics || []).filter(a => (a.subprojectId || null) === selectedSubprojectId), [d?.analytics, selectedSubprojectId]);
-  const visibleDamages = useMemo(() => (d?.damages || []).filter(dm => (dm.subprojectId || null) === selectedSubprojectId), [d?.damages, selectedSubprojectId]);
-  const visibleMisc = useMemo(() => (d?.misc || []).filter(m => (m.subprojectId || null) === selectedSubprojectId), [d?.misc, selectedSubprojectId]);
-  const visiblePhases = useMemo(() => (d?.phases || []).filter(p => (p.subprojectId || null) === selectedSubprojectId), [d?.phases, selectedSubprojectId]);
-
-  // ═══ CALC ITEMS (Financial Dashboard — Home: general+activeStands, Stand: only that stand) ═══
-  const activeSpIds = useMemo(() => (d?.subprojects || []).filter(sp => sp.inFinancial).map(sp => sp.id), [d?.subprojects]);
-  const filterCalc = useCallback((items) => {
-    if (!items) return [];
-    if (selectedSubprojectId === null) {
-      // Home: costi generali (null/undefined) + stand con inFinancial=true
-      return items.filter(e => {
-        const spId = e.subprojectId || null;
-        return spId === null || activeSpIds.includes(spId);
-      });
-    }
-    // Vista Stand: solo lo stand selezionato
-    return items.filter(e => (e.subprojectId || null) === selectedSubprojectId);
-  }, [selectedSubprojectId, activeSpIds]);
-
-  const calcEqItems = useMemo(() => filterCalc(d?.eqItems), [d?.eqItems, filterCalc]);
-  const calcLegs = useMemo(() => filterCalc(d?.legs), [d?.legs, filterCalc]);
-  const calcIntStaff = useMemo(() => filterCalc(d?.intStaff), [d?.intStaff, filterCalc]);
-  const calcExtStaff = useMemo(() => filterCalc(d?.extStaff), [d?.extStaff, filterCalc]);
-  const calcAnalytics = useMemo(() => filterCalc(d?.analytics), [d?.analytics, filterCalc]);
-  const calcDamages = useMemo(() => filterCalc(d?.damages), [d?.damages, filterCalc]);
-  const calcMisc = useMemo(() => filterCalc(d?.misc), [d?.misc, filterCalc]);
-  const calcPhases = useMemo(() => filterCalc(d?.phases), [d?.phases, filterCalc]);
-
-  // Calculate metrics using useMemo to avoid recalculation on every render
-  const calc = useMemo(() => {
-    if (!d) return { revenueNet: 0, totalEquipment: 0, totalTransport: 0, totalIntStaff: 0, totalExtStaff: 0, totalSubRentals: 0, totalPurchases: 0, totalAnalytics: 0, totalDamages: 0, totalMisc: 0, warehouseCost: 0, planningCost: 0, mealAccomCost: 0, contingencyCost: 0, financialCost: 0, totalCosts: 0, marginEur: 0, marginPct: 0, costBreakdown: [] };
-    // Revenue — Dual Mode: manual (A Forfait) or auto (Somma Voci)
-    const currentMode = d.revenueMode || 'manual';
-    const manualGross = d.revenueGross || 0;
-    // We need equipment/transport/staff revenues first, so discAmt/revenueNet are computed later
-
-    // Equipment
-    const eqCalcs = calcEqItems.map(e => {
-      const vol = e.qty * e.l * e.w * e.h;
-      const weight = e.qty * e.weightKg;
-      const coeff = e.coefficient ?? 1;
-      const cost = e.qty * e.costUnit * coeff;
-      const revenue = e.qty * (e.sellPrice || 0) * coeff;
-      const marginEur = revenue - cost;
-      const marginPct = revenue > 0 ? (revenue - cost) / revenue * 100 : null;
-      const markupItemPct = cost > 0 ? (revenue - cost) / cost * 100 : (revenue > 0 ? Infinity : null);
-      const depPerUse = e.owned && e.totalUses > 0 ? e.purchasePrice / e.totalUses : 0;
-      const depTotal = e.owned ? depPerUse * e.qty : 0;
-      const roiEvents = e.owned && e.costUnit > 0 ? Math.ceil(e.purchasePrice / e.costUnit) : 0;
-      const roiPaid = e.owned && roiEvents > 0 ? Math.min(e.usesUsed / roiEvents * 100, 100) : 0;
-      return { ...e, vol, weight, cost, revenue, marginEur, marginPct, markupItemPct, depPerUse, depTotal, roiEvents, roiPaid };
-    });
-    const totalVol = eqCalcs.reduce((s, e) => s + e.vol, 0);
-    const totalVolEff = totalVol / 0.70;
-    const totalWeight = eqCalcs.reduce((s, e) => s + e.weight, 0);
-    const totalEqCost = eqCalcs.reduce((s, e) => s + e.cost, 0);
-    const totalEqRevenue = eqCalcs.reduce((s, e) => s + e.revenue, 0);
-    const totalEqMargin = eqCalcs.reduce((s, e) => s + e.marginEur, 0);
-    const totalDepreciation = eqCalcs.reduce((s, e) => s + e.depTotal, 0);
-    const recVeh = VEH_DYN.find(v => v.vol >= totalVolEff && v.payload >= totalWeight) || VEH_DYN[VEH_DYN.length - 2];
-    const weightOverVol = totalWeight > 0 && totalVolEff > 0 && VEH_DYN.find(v => v.vol >= totalVolEff) && VEH_DYN.find(v => v.vol >= totalVolEff).payload < totalWeight;
-
-    // Transport
-    const legCalcs = calcLegs.map(leg => {
-      const rd = ROUTES_DYN[leg.route] || { km: leg.cKm, tolls: leg.cTolls };
-      const km = leg.route === "Personalizzato" ? leg.cKm : rd.km;
-      const tolls = leg.route === "Personalizzato" ? leg.cTolls : rd.tolls;
-      const veh = VEH_DYN[leg.vType] || VEH_DYN[0];
-      const fuel = (km * 2 * veh.cons / 100) * DIESEL_DYN * leg.nVeh;
-      const toll = tolls * 2 * leg.nVeh;
-      const rQ = (leg.shared > 0 ? (leg.rentalDay * leg.rentalDays) / leg.shared : leg.rentalDay * leg.rentalDays) * leg.nVeh;
-      const total = fuel + toll + rQ;
-      const sellPrice = leg.sellPrice || 0;
-      const legMargin = sellPrice - total;
-      const legMarginPct = sellPrice > 0 ? (legMargin / sellPrice) * 100 : null;
-      return { ...leg, km, fuel, toll, rQ, total, sellPrice, legMargin, legMarginPct, vName: veh.name, vVol: veh.vol, vPayload: veh.payload };
-    });
-    const totalTransport = legCalcs.reduce((s, l) => s + l.total, 0);
-    const totalTransportRevenue = legCalcs.reduce((s, l) => s + l.sellPrice, 0);
-    const totalTransportMargin = totalTransportRevenue - totalTransport;
-    const totalTransportMarginPct = totalTransportRevenue > 0 ? (totalTransportMargin / totalTransportRevenue) * 100 : null;
-    // Fleet capacity vs material
-    const fleetCapVol = legCalcs.reduce((s, l) => s + (l.vVol * l.nVeh), 0);
-    const fleetCapKg = legCalcs.reduce((s, l) => s + (l.vPayload * l.nVeh), 0);
-    const volOverflow = totalVolEff > 0 && fleetCapVol > 0 && totalVolEff > fleetCapVol;
-    const weightOverflow = totalWeight > 0 && fleetCapKg > 0 && totalWeight > fleetCapKg;
-
-    // Staff
-    const cStaff = s => ({ ...s, total: s.count * s.costHour * (s.hOrd * OT_MULT_DYN.ordinario + s.hStr * OT_MULT_DYN.straordinario + s.hFest * OT_MULT_DYN.festivo + s.hNott * OT_MULT_DYN.notturno), totalHours: s.hOrd + s.hStr + s.hFest + s.hNott });
-    const intCalcs = calcIntStaff.map(cStaff);
-    const totalInt = intCalcs.reduce((s, l) => s + l.total, 0);
-    const totalIntP = calcIntStaff.reduce((s, l) => s + l.count, 0);
-    const totalIntRev = intCalcs.reduce((s, l) => s + (l.sellTotal || 0), 0);
-    const extCalcs = calcExtStaff.map(cStaff);
-    const totalExt = extCalcs.reduce((s, l) => s + l.total, 0);
-    const totalExtP = calcExtStaff.reduce((s, l) => s + l.count, 0);
-    const totalExtRev = extCalcs.reduce((s, l) => s + (l.sellTotal || 0), 0);
-
-    const totalWh = selectedSubprojectId !== null ? 0 : d.whCount * d.whRate * (d.whHLoad + d.whHUnload);
-    const whSellTotal = selectedSubprojectId !== null ? 0 : (d.whSellTotal || 0);
-    const totalAllStaff = totalWh + totalInt + totalExt;
-    const totalAllPeople = (selectedSubprojectId !== null ? 0 : d.whCount) + totalIntP + totalExtP;
-    const totalStaffRevenue = totalIntRev + totalExtRev + whSellTotal;
-    const totalStaffMargin = totalStaffRevenue - totalAllStaff;
-    const totalStaffMarginPct = totalStaffRevenue > 0 ? (totalStaffMargin / totalStaffRevenue) * 100 : null;
-
-    // Misc costs (scalar = project-level only, zero in stand view)
-    const totalPlanCost = selectedSubprojectId !== null ? 0 : d.planHours * d.planRate;
-    const crewMeals = totalIntP + totalExtP;
-    const totalAccom = selectedSubprojectId !== null ? 0 : (crewMeals * d.mealCost * d.mealsDay * d.workDays) + (crewMeals * d.hotelNights * d.hotelCost);
-    const totalAn = calcAnalytics.reduce((s, a) => s + a.cost, 0);
-    const totalDmg = calcDamages.reduce((s, item) => s + item.cost, 0);
-    const totalMisc = calcMisc.reduce((s, m) => s + m.cost, 0);
-    const totalPhHours = calcPhases.reduce((s, p) => s + p.crew * p.hours, 0);
-
-    // Category analytics
-    const catStats = ['Proprio', 'Sub-noleggio', 'Acquisto'].map(cat => {
-      const items = eqCalcs.filter(e => e.itemCategory === cat);
-      const catCost = items.reduce((s, e) => s + e.cost, 0);
-      const catRev = items.reduce((s, e) => s + e.revenue, 0);
-      const catMarginPct = catRev > 0 ? (catRev - catCost) / catRev * 100 : null;
-      const incidencePct = totalEqCost > 0 ? catCost / totalEqCost * 100 : 0;
-      return { cat, cost: catCost, rev: catRev, marginPct: catMarginPct, incidencePct, count: items.length };
-    });
-
-    // ═══ DUAL-MODE REVENUE ═══
-    const autoGross = totalEqRevenue + totalTransportRevenue + totalStaffRevenue;
-    const effectiveGross = currentMode === 'auto' ? autoGross : manualGross;
-    const discAmt = d.discType === "%" ? effectiveGross * d.discVal / 100 : (d.discVal || 0);
-    const revenueNet = effectiveGross - discAmt;
-
-    // Grand Totals
-    const costMaterial = totalEqCost;
-    // Agency Fee (% sul ricavo lordo effettivo oppure importo fisso)
-    const agencyFeeTotal = Math.round(
-      ((d.agencyFeeType || 'percent') === 'percent'
-        ? effectiveGross * (d.agencyFeeValue || 0) / 100
-        : (d.agencyFeeValue || 0)
-      ) * 100
-    ) / 100;
-    const costsBeforeContingency = costMaterial + totalTransport + totalAllStaff + totalPlanCost + totalAccom + totalAn + totalDmg + totalMisc + totalDepreciation + agencyFeeTotal;
-    const contingencyAmt = costsBeforeContingency * d.contingencyPct / 100;
-    const totalCosts = costsBeforeContingency + contingencyAmt;
-    const financialCost = totalCosts * (d.interestRate / 100) * (d.paymentDays / 365);
-    const totalCostsAll = totalCosts + financialCost;
-
-    const margin = revenueNet - totalCostsAll;
-    const marginPct = pc(margin, revenueNet);
-    const markupPct = totalCostsAll > 0 ? (margin / totalCostsAll) * 100 : 0;
-    const marginColor = marginPct >= 30 ? "#27ae60" : marginPct >= 15 ? "#e67e22" : "#e74c3c";
-    const marginPerDay = d.totalWorkDays > 0 ? margin / d.totalWorkDays : 0;
-
-    return {
-      discAmt, revenueNet, effectiveGross, autoGross, margin, marginPct, markupPct, marginColor, marginPerDay,
-      eqCalcs, totalVol, totalVolEff, totalWeight, totalEqCost, totalEqRevenue, totalEqMargin, totalDepreciation, recVeh, weightOverVol, catStats,
-      legCalcs, totalTransport, totalTransportRevenue, totalTransportMargin, totalTransportMarginPct, fleetCapVol, fleetCapKg, volOverflow, weightOverflow,
-      intCalcs, totalInt, totalIntP, extCalcs, totalExt, totalExtP, totalWh, totalAllStaff, totalAllPeople, totalStaffRevenue, totalStaffMargin, totalStaffMarginPct, whSellTotal,
-      totalPlanCost, crewMeals, totalAccom, totalAn, totalDmg, totalMisc, totalPhHours, agencyFeeTotal,
-      costMaterial, costsBeforeContingency, contingencyAmt, totalCosts, financialCost, totalCostsAll
-    };
-  }, [d, calcEqItems, calcLegs, calcIntStaff, calcExtStaff, calcAnalytics, calcDamages, calcMisc, calcPhases, ROUTES_DYN, VEH_DYN, OT_MULT_DYN, DIESEL_DYN, selectedSubprojectId]);
-
-  // ═══ VISIBLE CALCS (UI Tables — calc results filtered by view) ═══
-  const visibleEqCalcs = useMemo(() => (calc?.eqCalcs || []).filter(e => (e.subprojectId || null) === selectedSubprojectId), [calc?.eqCalcs, selectedSubprojectId]);
-  const visibleIntCalcs = useMemo(() => (calc?.intCalcs || []).filter(s => (s.subprojectId || null) === selectedSubprojectId), [calc?.intCalcs, selectedSubprojectId]);
-  const visibleExtCalcs = useMemo(() => (calc?.extCalcs || []).filter(s => (s.subprojectId || null) === selectedSubprojectId), [calc?.extCalcs, selectedSubprojectId]);
-
-  // ═══ VISIBLE TOTALS (header dei Card — coerenti con le righe visibili) ═══
-  const vt = useMemo(() => {
-    const eqCost = visibleEqCalcs.reduce((s, e) => s + (e.cost || 0), 0);
-    const eqRev = visibleEqCalcs.reduce((s, e) => s + (e.revenue || 0), 0);
-    const eqMargin = eqRev - eqCost;
-    const eqVol = visibleEqCalcs.reduce((s, e) => s + (e.vol || 0), 0);
-    const eqWeight = visibleEqCalcs.reduce((s, e) => s + (e.weight || 0), 0);
-    const trCost = (calc?.legCalcs || []).filter(l => (l.subprojectId || null) === selectedSubprojectId).reduce((s, l) => s + (l.legCost || 0), 0);
-    const trRev = (calc?.legCalcs || []).filter(l => (l.subprojectId || null) === selectedSubprojectId).reduce((s, l) => s + (l.sellPrice || 0), 0);
-    const intCost = visibleIntCalcs.reduce((s, x) => s + (x.total || 0), 0);
-    const intRev = visibleIntCalcs.reduce((s, x) => s + (x.sellTotal || 0), 0);
-    const intP = visibleIntCalcs.reduce((s, x) => s + (x.count || 0), 0);
-    const extCost = visibleExtCalcs.reduce((s, x) => s + (x.total || 0), 0);
-    const extRev = visibleExtCalcs.reduce((s, x) => s + (x.sellTotal || 0), 0);
-    const extP = visibleExtCalcs.reduce((s, x) => s + (x.count || 0), 0);
-    const staffCost = intCost + extCost + (calc?.totalWh || 0);
-    const staffRev = intRev + extRev + (d?.whSellTotal || 0);
-    const staffP = intP + extP + (d?.whCount || 0);
-    const anCost = visibleAnalytics.reduce((s, a) => s + (a.cost || 0), 0);
-    const dmgCost = visibleDamages.reduce((s, a) => s + (a.cost || 0), 0);
-    const miscCost = visibleMisc.reduce((s, m) => s + (m.cost || 0), 0);
-    const phHours = visiblePhases.reduce((s, p) => s + (p.crew || 0) * (p.hours || 0), 0);
-    // catStats visibili
-    const catStats = ['Proprio', 'Sub-noleggio', 'Acquisto'].map(cat => {
-      const items = visibleEqCalcs.filter(e => e.itemCategory === cat);
-      const cost = items.reduce((s, e) => s + (e.cost || 0), 0);
-      const rev = items.reduce((s, e) => s + (e.revenue || 0), 0);
-      const marginPct = rev > 0 ? (rev - cost) / rev * 100 : null;
-      const incidencePct = eqCost > 0 ? cost / eqCost * 100 : 0;
-      return { cat, cost, rev, marginPct, incidencePct, count: items.length };
-    });
-    return { eqCost, eqRev, eqMargin, eqVol, eqWeight, trCost, trRev, intCost, extCost, staffCost, staffRev, staffP, anCost, dmgCost, miscCost, phHours, catStats };
-  }, [visibleEqCalcs, visibleIntCalcs, visibleExtCalcs, visibleAnalytics, visibleDamages, visibleMisc, visiblePhases, calc?.legCalcs, calc?.totalWh, d?.whSellTotal, d?.whCount, selectedSubprojectId]);
-
-  // ═══ SUBPROJECT BREAKDOWN (per il cruscotto Home — usa dati GREZZI, non filtrati) ═══
-  const spBreakdown = useMemo(() => {
-    if (!d?.subprojects?.length) return [];
-    return d.subprojects.map(sp => {
-      const spItems = (d.eqItems || []).filter(e => (e.subprojectId || null) === sp.id);
-      const matCost = spItems.reduce((s, e) => s + Math.round((e.qty || 0) * (e.costUnit || 0) * (e.coefficient ?? 1) * 100) / 100, 0);
-      const matRev = spItems.reduce((s, e) => s + (e.sellPrice || 0), 0);
-      const spLegs = (d.legs || []).filter(l => (l.subprojectId || null) === sp.id);
-      const trCost = spLegs.reduce((s, l) => s + ((l.rentalDay || 0) * (l.rentalDays || 1) * (l.nVeh || 1)), 0);
-      const spStaff = [...(d.intStaff || []), ...(d.extStaff || [])].filter(x => (x.subprojectId || null) === sp.id);
-      const staffCost = spStaff.reduce((s, x) => s + (x.count || 0) * (x.costHour || 0) * ((x.hOrd || 0) + (x.hStr || 0) + (x.hFest || 0) + (x.hNott || 0)), 0);
-      const extraCost = [...(d.analytics || []), ...(d.damages || []), ...(d.misc || [])].filter(c => (c.subprojectId || null) === sp.id).reduce((s, c) => s + (c.cost || 0), 0);
-      const totalCost = matCost + trCost + staffCost + extraCost;
-      return { ...sp, matCost, matRev, trCost, staffCost, extraCost, totalCost };
-    });
-  }, [d?.subprojects, d?.eqItems, d?.legs, d?.intStaff, d?.extStaff, d?.analytics, d?.damages, d?.misc]);
-
-  const activeAlerts = useMemo(() => {
-    if (!d || !appConfig?.alerts?.rules) return [];
-    const rules = appConfig.alerts.rules.filter(r => r.enabled);
-    const values = {
-      marginPct: calc.marginPct || 0,
-      contingencyPct: d.contingencyPct || 0,
-      transportPctOfRevenue: calc.revenueNet > 0 ? (calc.totalTransport / calc.revenueNet) * 100 : 0,
-      staffPctOfRevenue: calc.revenueNet > 0 ? ((calc.totalInt + calc.totalExt) / calc.revenueNet) * 100 : 0,
-    };
-    return rules.filter(rule => {
-      const val = values[rule.condition];
-      if (val === undefined) return false;
-      switch (rule.operator) {
-        case '<': return val < rule.value;
-        case '>': return val > rule.value;
-        case '=': return val === rule.value;
-        case '<=': return val <= rule.value;
-        case '>=': return val >= rule.value;
-        default: return false;
-      }
-    });
-  }, [d, calc, appConfig]);
-
-  const pricingSuggestion = useMemo(() => {
-    if (!d || !appConfig?.pricing || !calc.revenueNet) return null;
-    const pricing = appConfig.pricing;
-    let suggestions = [];
-
-    if (pricing.applyMarkupAuto && d.eventType) {
-      const rule = (pricing.markupRules || []).find(r => r.eventType === d.eventType);
-      if (rule) {
-        const suggestedRevenue = calc.totalCosts * (1 + rule.markupPct / 100);
-        if (d.revenueGross < suggestedRevenue) {
-          suggestions.push({ type: 'markup', message: 'Markup ' + rule.label + ': ricavo suggerito ' + Math.round(suggestedRevenue).toLocaleString('it-IT') + ' EUR', value: suggestedRevenue });
-        }
-      }
-    }
-
-    if (pricing.applySeasonalAuto && d.eventDate) {
-      const month = new Date(d.eventDate).getMonth() + 1;
-      const season = (pricing.seasonalRules || []).find(s => (s.months || []).includes(month));
-      if (season && season.adjustPct !== 0) {
-        suggestions.push({ type: 'seasonal', message: season.name + ': ' + (season.adjustPct > 0 ? '+' : '') + season.adjustPct + '% sul prezzo' });
-      }
-    }
-
-    if (pricing.applyVolumeAuto && d.revenueGross > 0) {
-      const tier = (pricing.volumeDiscounts || []).find(v => d.revenueGross >= v.minAmount && d.revenueGross <= v.maxAmount);
-      if (tier && tier.discountPct > 0) {
-        suggestions.push({ type: 'volume', message: 'Fascia ' + tier.label + ': sconto cliente ' + tier.discountPct + '%' });
-      }
-    }
-
-    return suggestions.length > 0 ? suggestions : null;
-  }, [d, calc, appConfig]);
+  // (logica di calcolo spostata in src/hooks/useCalculations.js — nessuna dichiarazione locale necessaria)
 
   const { getDragProps: getDragPropsEq } = useDragDrop(d?.eqItems || [], (newOrder) => reorderItems('eqItems', newOrder));
   const { getDragProps: getDragPropsLegs } = useDragDrop(d?.legs || [], (newOrder) => reorderItems('legs', newOrder));
@@ -829,7 +650,8 @@ export default function ItineraV4({ projectId, onBack }) {
           l: item.l || 0, w: item.w || 0, h: item.h || 0,
           weight_kg: item.weightKg || 0,
           rentman_id: row.rentman_id,
-          subproject_id: item.subprojectId ? (subprojectMap[item.subprojectId] || null) : null,
+          item_category: item.itemCategory || 'Proprio',
+          subproject_id: item.subprojectId ? (subprojectMap[item.subprojectId] || item.subprojectId) : null,
           // owned, purchase_price are PRESERVED
         });
       } else {
@@ -844,6 +666,7 @@ export default function ItineraV4({ projectId, onBack }) {
           cost_unit: item.costUnit || 0,
           owned: false, purchase_price: 0, total_uses: 1, uses_used: 0,
           rentman_id: item.rentmanId || null,
+          item_category: item.itemCategory || 'Proprio',
           subproject_id: item.subprojectId ? (subprojectMap[item.subprojectId] || null) : null,
         });
       }
@@ -964,6 +787,18 @@ export default function ItineraV4({ projectId, onBack }) {
 
   // ═══ COMPUTE SYNC DIFF ═══
   const computeSyncDiff = (mapped, currentData, subprojectMap = {}) => {
+    // Trasforma i subRentals in equipment items
+    const fallbackSubprojectId = (currentData.subprojects && currentData.subprojects.length === 1) ? currentData.subprojects[0].id : null;
+    const transformedSubRentals = (mapped.subRentals || []).map(sr => ({
+      rentmanId: sr.rentmanId, desc: sr.desc, supplier: sr.supplier || '', qty: sr.qty || 1, coefficient: 1,
+      costUnit: sr.cost || 0, l: 0, w: 0, h: 0, weightKg: 0,
+      subprojectId: sr.subprojectId || fallbackSubprojectId || null,
+      itemCategory: 'Sub-noleggio'
+    }));
+    const normalEq = (mapped.equipmentItems || []).map(e => ({ ...e, itemCategory: e.itemCategory || 'Proprio' }));
+    mapped.equipmentItems = [...normalEq, ...transformedSubRentals];
+    mapped.subRentals = [];
+
     const updates = [];
     const additions = [];
     const removals = [];
@@ -989,6 +824,10 @@ export default function ItineraV4({ projectId, onBack }) {
       if (rid) incomingEqIds.add(rid);
       if (rid && existingEqMap[rid]) {
         const ex = existingEqMap[rid];
+        // Preserva assegnazione manuale subprojectId per Sub-noleggi (campo manuale, non da Rentman)
+        if (eq.itemCategory === 'Sub-noleggio' && ex.subprojectId && !eq.subprojectId) {
+          eq.subprojectId = ex.subprojectId;
+        }
         const changes = [];
         const fields = [
           { field: 'descrizione', oldVal: ex.desc, newVal: eq.desc },
@@ -1075,6 +914,19 @@ export default function ItineraV4({ projectId, onBack }) {
   const handleRentmanImport = async (mapped, options) => {
     console.log('handleRentmanImport CALLED. options:', JSON.stringify(options));
     if (!mapped) return null;
+
+    // Trasforma i subRentals in equipment items
+    const fallbackSubprojectId = (d.subprojects && d.subprojects.length === 1) ? d.subprojects[0].id : null;
+    const transformedSubRentals = (mapped.subRentals || []).map(sr => ({
+      rentmanId: sr.rentmanId, desc: sr.desc, supplier: sr.supplier || '', qty: sr.qty || 1, coefficient: 1,
+      costUnit: sr.cost || 0, l: 0, w: 0, h: 0, weightKg: 0,
+      subprojectId: sr.subprojectId || fallbackSubprojectId || null,
+      itemCategory: 'Sub-noleggio'
+    }));
+    const normalEq = (mapped.equipmentItems || []).map(e => ({ ...e, itemCategory: e.itemCategory || 'Proprio' }));
+    mapped.equipmentItems = [...normalEq, ...transformedSubRentals];
+    mapped.subRentals = [];
+
     const startTime = Date.now();
     const TIMEOUT_MS = 30000;
     const results = { equipment: null, subRentals: null, purchases: null, misc: null, mode: 'clear', skipped: 0 };
@@ -1148,6 +1000,7 @@ export default function ItineraV4({ projectId, onBack }) {
             weight_kg: eq.weightKg || 0, cost_unit: eq.costUnit || 0,
             owned: false, purchase_price: 0, total_uses: 1, uses_used: 0,
             rentman_id: eq.rentmanId || null,
+            item_category: eq.itemCategory || 'Proprio',
             subproject_id: eq.subprojectId ? (subprojectMapRef.current[eq.subprojectId] || null) : null,
           }));
           console.log('BATCH INSERT:', eqRows.length, 'equipment items');
@@ -1290,7 +1143,9 @@ export default function ItineraV4({ projectId, onBack }) {
             if (costSnap.length > 0) {
               const rows = costSnap.map(c => ({
                 project_id: projectId, category: c.category, description: c.desc || '',
-                supplier: c.supplier || '', cost: c.cost || 0, vat_included: c.vatIncl || false,
+                supplier: c.supplier || '', cost: c.cost || 0,
+                // Bug #5 fix: lo stato React usa vatIncluded (non vatIncl, che è undefined)
+                vat_included: c.vatIncluded || false,
                 rentman_id: c.rentmanId || null,
               }));
               await supabase.from('cost_entries').insert(rows);
@@ -1375,8 +1230,10 @@ export default function ItineraV4({ projectId, onBack }) {
               { id: 'riepilogo', label: 'Riepilogo', icon: '📊' },
               { id: 'subnoleggi', label: 'Sub-noleggi', icon: '🤝' },
               { id: 'acquisti', label: 'Acquisti', icon: '🛒' },
+              { id: 'crm', label: 'Anagrafica CRM', icon: '📋', action: onOpenCrm },
+              ...(selectedSubprojectId === null && d?.rentmanProjectId ? [{ id: 'contabilita', label: 'Contabilità Rentman', icon: '🧾', action: onOpenAccounting }] : []),
             ].map(s => (
-              <button key={s.id} onClick={() => scrollToSection(s.id)} style={{
+              <button key={s.id} onClick={() => s.action ? s.action() : scrollToSection(s.id)} style={{
                 display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
                 padding: '8px 10px', marginBottom: 2, borderRadius: 6, border: 'none', cursor: 'pointer',
                 fontSize: 11, fontWeight: 600, transition: 'all 0.2s',
@@ -1414,7 +1271,7 @@ export default function ItineraV4({ projectId, onBack }) {
               <M label="COSTI TOTALI" value={`€${fmt(calc.totalCostsAll)}`} s color={calc.totalCostsAll > calc.revenueNet ? "#e74c3c" : "#555"} />
               <span style={{ color: "#ccc", fontSize: 18 }}>=</span>
               <M label="MARGINE %" value={`${fmtD(calc.marginPct)}%`} color={calc.marginColor} />
-              <M label="MARKUP" value={`${fmtD(calc.markupPct)}%`} s color="#555" />
+              <M label="MARKUP" value={`${fmtD(calc.markupPct)}%`} s color="#555" /><InfoTooltip text="Il ricarico percentuale applicato sui costi totali per ottenere il prezzo di vendita." />
               <M label="€/GIORNO" value={`€${fmt(calc.marginPerDay)}`} s color={calc.marginPerDay > 500 ? "#27ae60" : "#e67e22"} />
               <Badge v={calc.marginPct} />
             </div>
@@ -1433,52 +1290,67 @@ export default function ItineraV4({ projectId, onBack }) {
             <div style={{ marginTop: 8 }}>
               <Bar label="Materiale + Sub + Acquisti" value={calc.costMaterial} max={calc.revenueNet} color="#3498db" />
               <Bar label="Ammortamento materiale" value={calc.totalDepreciation} max={calc.revenueNet} color="#2980b9" />
+              {(calc.amortCost || 0) > 0 && <Bar label="Ammortamento (manuale)" value={calc.amortCost} max={calc.revenueNet} color="#7f8c8d" />}
               <Bar label="Trasporto" value={calc.totalTransport} max={calc.revenueNet} color="#e67e22" />
               <Bar label="Personale (campo + magazzino)" value={calc.totalAllStaff} max={calc.revenueNet} color="#9b59b6" />
               <Bar label="Pianificazione / PM" value={calc.totalPlanCost} max={calc.revenueNet} color="#8e44ad" />
               <Bar label="Vitto & Alloggio" value={calc.totalAccom} max={calc.revenueNet} color="#1abc9c" />
               {calc.agencyFeeTotal > 0 && <Bar label={`Fee Agenzia ${d.agencyFeeType === 'percent' ? d.agencyFeeValue + '%' : '€'}`} value={calc.agencyFeeTotal} max={calc.revenueNet} color="#e91e63" />}
               <Bar label="Analitici + Danni" value={calc.totalAn + calc.totalDmg} max={calc.revenueNet} color="#34495e" />
-              <Bar label={`Contingency ${d.contingencyPct}%`} value={calc.contingencyAmt} max={calc.revenueNet} color="#e74c3c" />
+              <Bar label={<span style={{ display: 'flex', alignItems: 'center' }}>Contingency {d.contingencyPct}%<InfoTooltip text="Fondo imprevisti. Copre spese extra non preventivate (es. noleggi urgenti, straordinari). Il valore ideale consigliato è tra il 5% e il 10% del totale costi." /></span>} value={calc.contingencyAmt} max={calc.revenueNet} color="#e74c3c" />
               <Bar label={`Costo finanziario (${d.paymentDays}gg)`} value={calc.financialCost} max={calc.revenueNet} color="#c0392b" />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 10, color: "#888", flexWrap: "wrap", gap: 4 }}>
-              <span>Break-even: <strong>€{fmt(calc.totalCostsAll)}</strong> ricavo minimo</span>
-              <span>Extra + Misc: €{fmt(calc.totalMisc)}</span>
+              <span style={{ display: 'flex', alignItems: 'center' }}>Break-even: <strong style={{ margin: '0 4px' }}>€{fmt(calc.totalCostsAll)}</strong> ricavo minimo<InfoTooltip text="Il punto di pareggio. È il ricavo minimo indispensabile per coprire tutti i costi del progetto senza andare in perdita." /></span>
+              <span style={{ display: 'flex', alignItems: 'center' }}>Extra + Misc: €{fmt(calc.totalMisc)}</span>
             </div>
           </div>
 
           {/* ═══ SUBPROJECT NAV BAR ═══ */}
-          {d.subprojects && d.subprojects.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', overflowX: 'auto', flexWrap: 'wrap', marginBottom: 8 }}>
-              <button
-                onClick={() => setSelectedSubprojectId(null)}
-                style={{
-                  padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  border: selectedSubprojectId === null ? '2px solid #3b82f6' : '1px solid #e2e8f0',
-                  background: selectedSubprojectId === null ? '#eff6ff' : '#fff',
-                  color: selectedSubprojectId === null ? '#1d4ed8' : '#475569',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                🏠 Home Progetto
-              </button>
-              {d.subprojects.map(sp => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', overflowX: 'auto', flexWrap: 'wrap', marginBottom: 8 }}>
+            <button
+              onClick={() => setSelectedSubprojectId(null)}
+              style={{
+                padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                border: selectedSubprojectId === null ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                background: selectedSubprojectId === null ? '#eff6ff' : '#fff',
+                color: selectedSubprojectId === null ? '#1d4ed8' : '#475569',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🏠 Home Progetto
+            </button>
+            {(d.subprojects || []).map(sp => {
+              const isManual = !sp.rentmanSubprojectId;
+              const isEditing = editingSubId === sp.id;
+              return (
                 <div key={sp.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button
-                    onClick={() => setSelectedSubprojectId(sp.id)}
-                    style={{
-                      padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                      border: selectedSubprojectId === sp.id ? '2px solid #3b82f6' : '1px solid #e2e8f0',
-                      background: selectedSubprojectId === sp.id ? '#eff6ff' : '#fff',
-                      color: selectedSubprojectId === sp.id ? '#1d4ed8' : '#475569',
-                      whiteSpace: 'nowrap',
-                      opacity: sp.inFinancial ? 1 : 0.5,
-                    }}
-                    title={sp.location ? `${sp.name} — ${sp.location}` : sp.name}
-                  >
-                    📍 {sp.name || 'Stand'}
-                  </button>
+                  {isEditing ? (
+                    <input
+                      autoFocus
+                      value={editingSubName}
+                      onChange={e => setEditingSubName(e.target.value)}
+                      onBlur={() => { if (editingSubName.trim()) renameSubproject(sp.id, editingSubName.trim()); setEditingSubId(null); }}
+                      onKeyDown={e => { if (e.key === 'Enter') { if (editingSubName.trim()) renameSubproject(sp.id, editingSubName.trim()); setEditingSubId(null); } if (e.key === 'Escape') setEditingSubId(null); }}
+                      style={{ padding: '5px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '2px solid #3b82f6', outline: 'none', width: 140, maxWidth: 140, boxSizing: 'border-box' }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setSelectedSubprojectId(sp.id)}
+                      onDoubleClick={isManual ? (e) => { e.preventDefault(); setEditingSubId(sp.id); setEditingSubName(sp.name || ''); } : undefined}
+                      style={{
+                        padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        border: selectedSubprojectId === sp.id ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                        background: selectedSubprojectId === sp.id ? '#eff6ff' : '#fff',
+                        color: selectedSubprojectId === sp.id ? '#1d4ed8' : '#475569',
+                        whiteSpace: 'nowrap',
+                        opacity: sp.inFinancial ? 1 : 0.5,
+                      }}
+                      title={isManual ? (sp.location ? `${sp.name} — ${sp.location} (doppio click per rinominare)` : `${sp.name || 'Stand'} (doppio click per rinominare)`) : (sp.location ? `${sp.name} — ${sp.location}` : sp.name)}
+                    >
+                      📍 {sp.name || 'Stand'}
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); updateSubprojectFinancial(sp.id, !sp.inFinancial); }}
                     title={sp.inFinancial ? 'Incluso nei calcoli finanziari — clicca per escludere' : 'Escluso dai calcoli finanziari — clicca per includere'}
@@ -1491,10 +1363,63 @@ export default function ItineraV4({ projectId, onBack }) {
                   >
                     {sp.inFinancial ? '€' : '∅'}
                   </button>
+                  {isManual && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eliminare il sottoprogetto "${sp.name || 'Stand'}"? Gli item associati resteranno orfani.`)) { deleteSubproject(sp.id); if (selectedSubprojectId === sp.id) setSelectedSubprojectId(null); } }}
+                      title="Elimina sottoprogetto"
+                      style={{ width: 20, height: 20, borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 10, background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7, transition: 'opacity 0.2s' }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+            {isAddingSub ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  autoFocus
+                  value={newSubName}
+                  onChange={e => setNewSubName(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && newSubName.trim()) {
+                      const id = await addSubproject(newSubName.trim());
+                      setNewSubName(''); setIsAddingSub(false);
+                      if (id) setSelectedSubprojectId(id);
+                    }
+                    if (e.key === 'Escape') { setNewSubName(''); setIsAddingSub(false); }
+                  }}
+                  onBlur={() => { setNewSubName(''); setIsAddingSub(false); }}
+                  placeholder="Nome stand..."
+                  style={{ padding: '5px 10px', borderRadius: 8, fontSize: 12, border: '2px solid #3b82f6', outline: 'none', width: 140, maxWidth: 140, boxSizing: 'border-box' }}
+                />
+                <button
+                  onMouseDown={async (e) => {
+                    e.preventDefault();
+                    if (newSubName.trim()) {
+                      const id = await addSubproject(newSubName.trim());
+                      setNewSubName(''); setIsAddingSub(false);
+                      if (id) setSelectedSubprojectId(id);
+                    }
+                  }}
+                  style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: 'none', background: '#3b82f6', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  Crea
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAddingSub(true)}
+                style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1px dashed #cbd5e1', background: '#f8fafc', color: '#64748b', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.color = '#3b82f6'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
+              >
+                + Sottoprogetto
+              </button>
+            )}
+          </div>
 
           {/* ═══ SUBPROJECTS DASHBOARD (Home only) ═══ */}
           {selectedSubprojectId === null && d.subprojects && d.subprojects.length > 0 && (
@@ -1579,16 +1504,50 @@ export default function ItineraV4({ projectId, onBack }) {
                 <F label="Cod. Commessa" value={d.projectCode} onChange={v => updateF("projectCode", v)} type="text" w="0.7" />
                 <F label="Nome progetto" value={d.projectName} onChange={v => updateF("projectName", v)} type="text" w="2" />
                 <F label="Cliente" value={d.clientName} onChange={v => updateF("clientName", v)} type="text" />
-                <Sel label="Tipo" value={d.eventType} onChange={v => updateF("eventType", v)} options={["Wedding", "Corporate", "Fiera", "Festival", "Privato", "Istituzionale"]} />
+                <Sel label="Tipo" value={d.eventType} onChange={v => updateF("eventType", v)} options={["Wedding", "Corporate", "Private / Party", "Family / Religious", "Festival", "Altro"]} />
                 <F label="Data" value={d.eventDate} onChange={v => updateF("eventDate", v)} type="date" />
                 <F label="GG lavoro" value={d.totalWorkDays} onChange={v => updateF("totalWorkDays", v)} min={1} w="0.5" />
+                {(() => {
+                  const st = d.status || 'draft';
+                  const sc = st === 'cancelled' ? { bg: '#fef2f2', c: '#dc2626', bd: '#fca5a5' }
+                    : st === 'completed' ? { bg: '#f0fdf4', c: '#15803d', bd: '#86efac' }
+                      : st === 'approved' ? { bg: '#dcfce7', c: '#16a34a', bd: '#6ee7b7' }
+                        : st === 'sent' ? { bg: '#dbeafe', c: '#1d4ed8', bd: '#93c5fd' }
+                          : { bg: '#fef9c3', c: '#854d0e', bd: '#facc15' };
+                  return (
+                    <div style={{ flex: '0 0 auto', minWidth: 120 }}>
+                      <label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 1 }}>Stato</label>
+                      <select
+                        value={st}
+                        onChange={e => updateField('status', e.target.value)}
+                        style={{ width: '100%', padding: '4px 8px', border: `2px solid ${sc.bd}`, borderRadius: 6, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.c, cursor: 'pointer', boxSizing: 'border-box', transition: 'all 0.25s ease' }}
+                      >
+                        <option value="draft">Bozza</option>
+                        <option value="sent">Inviato</option>
+                        <option value="approved">Approvato</option>
+                        <option value="completed">Completato</option>
+                        <option value="cancelled">Annullato</option>
+                      </select>
+                    </div>
+                  );
+                })()}
               </R>
               {/* ═══ REVENUE MODE TOGGLE ═══ */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Modalità Ricavo:</span>
-                <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                  <button onClick={() => updateF('revenueMode', 'manual')} style={{ padding: '5px 14px', fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', transition: 'all 0.2s ease', background: (d.revenueMode || 'manual') === 'manual' ? 'linear-gradient(135deg, #1B3A5C, #2E86AB)' : '#f8fafc', color: (d.revenueMode || 'manual') === 'manual' ? '#fff' : '#64748b' }}>💰 A Forfait</button>
-                  <button onClick={() => updateF('revenueMode', 'auto')} style={{ padding: '5px 14px', fontSize: 11, fontWeight: 700, border: 'none', borderLeft: '1px solid #e2e8f0', cursor: 'pointer', transition: 'all 0.2s ease', background: (d.revenueMode || 'manual') === 'auto' ? 'linear-gradient(135deg, #27ae60, #2ecc71)' : '#f8fafc', color: (d.revenueMode || 'manual') === 'auto' ? '#fff' : '#64748b' }}>🔄 Somma Voci</button>
+                <div style={{ display: 'flex', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                  <button onClick={() => updateF('revenueMode', 'manual')} style={{ padding: '5px 14px', fontSize: 11, fontWeight: 700, border: 'none', borderRadius: '6px 0 0 6px', cursor: 'pointer', transition: 'all 0.2s ease', background: (d.revenueMode || 'manual') === 'manual' ? 'linear-gradient(135deg, #1B3A5C, #2E86AB)' : '#f8fafc', color: (d.revenueMode || 'manual') === 'manual' ? '#fff' : '#64748b' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span>💰 A Forfait</span>
+                      <InfoTooltip text="Il cliente paga un prezzo fisso globale. I prezzi di vendita delle singole righe vengono ignorati per il totale (ma i costi vengono calcolati per il margine)." />
+                    </div>
+                  </button>
+                  <button onClick={() => updateF('revenueMode', 'auto')} style={{ padding: '5px 14px', fontSize: 11, fontWeight: 700, border: 'none', borderLeft: '1px solid #e2e8f0', borderRadius: '0 6px 6px 0', cursor: 'pointer', transition: 'all 0.2s ease', background: (d.revenueMode || 'manual') === 'auto' ? 'linear-gradient(135deg, #27ae60, #2ecc71)' : '#f8fafc', color: (d.revenueMode || 'manual') === 'auto' ? '#fff' : '#64748b' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span>🔄 Somma Voci</span>
+                      <InfoTooltip text="Il totale del preventivo viene calcolato sommando automaticamente i prezzi di vendita di ogni singola voce (materiali, staff, logistica)." />
+                    </div>
+                  </button>
                 </div>
                 {(d.revenueMode || 'manual') === 'auto' && <span style={{ fontSize: 10, color: '#27ae60', fontWeight: 600 }}>Mat €{fmt(calc.totalEqRevenue)} + Trasp €{fmt(calc.totalTransportRevenue)} + Staff €{fmt(calc.totalStaffRevenue)}</span>}
               </div>
@@ -1632,9 +1591,9 @@ export default function ItineraV4({ projectId, onBack }) {
                 .eq-col-hl input { border: 2px solid #2E86AB !important; background: #f0f7ff !important; font-weight: 700 !important; color: #1B3A5C !important; }
                 .eq-col-sell input { border: 2px solid #27ae60 !important; background: #f0fff5 !important; font-weight: 700 !important; color: #1a5c2e !important; }
               `}</style>
-              <EquipmentGrid items={visibleEqCalcs} updateObjList={updateObjList} delObj={delObj} showDragHandle showCategoryDropdown getDragProps={getDragPropsEq} />
+              <EquipmentGrid items={visibleEqCalcs} updateObjList={updateObjList} delObj={delObj} showDragHandle showCategoryDropdown onCategoryChange={handleCategoryChange} getDragProps={getDragPropsEq} />
               <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0 })} s>+ Materiale</Btn>
-              <Sub text={`Volume: ${fmtD2(calc.totalVol)}m³ → Effettivo (÷0.70): ${fmtD(calc.totalVolEff)}m³ | Peso: ${fmt(calc.totalWeight)}kg | Min: ${calc.recVeh.name} | Ammort: €${fmt(calc.totalDepreciation)}`} />
+              <Sub text={`Volume: ${fmtD2(calc.totalVol)}m³ → Effettivo (÷0.70): ${fmtD(calc.totalVolEff)}m³ | Peso: ${fmt(calc.totalWeight)}kg | Min: ${calc.recVeh.name} | Ammort: €${fmt(calc.totalDepreciation)} | Deperimento: €${fmt(selectedSubprojectId === null ? (d.amortization || 0) : 0)}`} />
               {calc.weightOverVol && <Warn text={`⚠️ PESO: ${fmt(calc.totalWeight)}kg supera portata veicolo per volume. Serve veicolo più grande o più viaggi!`} />}
             </Card>
 
@@ -1643,7 +1602,7 @@ export default function ItineraV4({ projectId, onBack }) {
           {/* ═══ SUB-NOLEGGI (Filtered Smart View) ═══ */}
           <div id="section-subnoleggi">
             <Card title={`Sub-noleggi | Costo €${fmt(vt.catStats[1].cost)} | Ricavo €${fmt(vt.catStats[1].rev)} | Margine €${fmt(vt.catStats[1].rev - vt.catStats[1].cost)} | ${vt.catStats[1].count} items`} icon="🤝" open={isO("sn")} onToggle={() => tgl("sn")}>
-              <EquipmentGrid items={visibleEqCalcs.filter(e => e.itemCategory === 'Sub-noleggio')} updateObjList={updateObjList} delObj={delObj} />
+              <EquipmentGrid items={visibleEqCalcs.filter(e => e.itemCategory === 'Sub-noleggio')} updateObjList={updateObjList} delObj={delObj} showSubprojectDropdown={true} subprojects={d.subprojects || []} showCategoryDropdown onCategoryChange={handleCategoryChange} />
               <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0, itemCategory: 'Sub-noleggio' })} s>+ Sub-noleggio</Btn>
             </Card>
           </div>
@@ -1651,7 +1610,7 @@ export default function ItineraV4({ projectId, onBack }) {
           {/* ═══ ACQUISTI (Filtered Smart View) ═══ */}
           <div id="section-acquisti">
             <Card title={`Acquisti | Costo €${fmt(vt.catStats[2].cost)} | Ricavo €${fmt(vt.catStats[2].rev)} | Margine €${fmt(vt.catStats[2].rev - vt.catStats[2].cost)} | ${vt.catStats[2].count} items`} icon="🛒" open={isO("aq")} onToggle={() => tgl("aq")}>
-              <EquipmentGrid items={visibleEqCalcs.filter(e => e.itemCategory === 'Acquisto')} updateObjList={updateObjList} delObj={delObj} />
+              <EquipmentGrid items={visibleEqCalcs.filter(e => e.itemCategory === 'Acquisto')} updateObjList={updateObjList} delObj={delObj} showCategoryDropdown onCategoryChange={handleCategoryChange} />
               <Btn onClick={() => addObj("eqItems", { desc: "", supplier: "", qty: 1, coefficient: 1, l: 0, w: 0, h: 0, weightKg: 0, costUnit: 0, sellPrice: 0, owned: false, purchasePrice: 0, totalUses: 1, usesUsed: 0, itemCategory: 'Acquisto' })} s>+ Acquisto</Btn>
             </Card>
           </div>
@@ -1769,31 +1728,39 @@ export default function ItineraV4({ projectId, onBack }) {
                 ))}
               </div>
 
-              {/* Warehouse — solo Home progetto */}
-              {selectedSubprojectId === null && (
-                <div style={{ background: "#f8f9fb", padding: 8, borderRadius: 6, marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Magazzino — {d.whCount}p | Costo €{fmt(calc.totalWh)} | Ricavo €{fmt(calc.whSellTotal)}</div>
-                  <R>
-                    <F label="N° magazzinieri" value={d.whCount} onChange={v => updateF("whCount", v)} min={1} />
-                    <F label="€/ora" value={d.whRate} onChange={v => updateF("whRate", v)} />
-                    <F label="Ore carico" value={d.whHLoad} onChange={v => updateF("whHLoad", v)} />
-                    <F label="Ore scarico" value={d.whHUnload} onChange={v => updateF("whHUnload", v)} />
-                  </R>
-                  <R>
-                    <div style={{ flex: 1, minWidth: 60 }}>
-                      <label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 1 }}>Costo Totale €</label>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', padding: '4px 8px', background: '#fff', borderRadius: 4, border: '1px solid #e2e8f0' }}>€{fmt(calc.totalWh)}</div>
+              {/* Warehouse — Dynamic Grid */}
+              <div style={{ background: "#f8f9fb", padding: 8, borderRadius: 6, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>🏭 Magazzino — Costo €{fmt(calc.totalWh)} | Vendita €{fmt(calc.whSellTotal)}</div>
+                {visibleWh.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, padding: '4px 0', fontSize: 9, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>
+                    <div style={{ flex: 3, minWidth: 80 }}>Descrizione</div>
+                    <div style={{ flex: 1, minWidth: 45, textAlign: 'center' }}>Persone</div>
+                    <div style={{ flex: 1, minWidth: 45, textAlign: 'center' }}>Ore</div>
+                    <div style={{ flex: 1, minWidth: 50, textAlign: 'center' }}>€/ora</div>
+                    <div style={{ flex: 1, minWidth: 55, textAlign: 'right' }}>Costo</div>
+                    <div style={{ flex: 1, minWidth: 55, textAlign: 'center' }}>Vendita €</div>
+                    <div style={{ flex: 1, minWidth: 55, textAlign: 'right' }}>Margine</div>
+                    <div style={{ width: 28 }}></div>
+                  </div>
+                )}
+                {visibleWh.map(w => {
+                  const rowCost = (w.people || 1) * (w.hours || 0) * (w.costUnit || 0);
+                  const rowMargin = (w.sellTotal || 0) - rowCost;
+                  return (
+                    <div key={w.id} style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '3px 0', borderBottom: '1px solid #e2e8f0' }}>
+                      <div style={{ flex: 3, minWidth: 80 }}><Inp value={w.desc} onChange={v => updateObjList('whItems', w.id, 'desc', v)} placeholder="Carico/Scarico Stand A" /></div>
+                      <div style={{ flex: 1, minWidth: 45 }}><F value={w.people} onChange={v => updateObjList('whItems', w.id, 'people', v)} min={1} /></div>
+                      <div style={{ flex: 1, minWidth: 45 }}><F value={w.hours} onChange={v => updateObjList('whItems', w.id, 'hours', v)} /></div>
+                      <div style={{ flex: 1, minWidth: 50 }}><F value={w.costUnit} onChange={v => updateObjList('whItems', w.id, 'costUnit', v)} /></div>
+                      <div style={{ flex: 1, minWidth: 55, textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#555' }}>€{fmt(rowCost)}</div>
+                      <div style={{ flex: 1, minWidth: 55 }} className="tr-col-sell"><F value={w.sellTotal} onChange={v => updateObjList('whItems', w.id, 'sellTotal', v)} /></div>
+                      <div style={{ flex: 1, minWidth: 55, textAlign: 'right', fontSize: 11, fontWeight: 700, color: rowMargin >= 0 ? '#27ae60' : '#e74c3c' }}>€{fmt(rowMargin)}</div>
+                      <button onClick={() => delObj('whItems', w.id)} style={{ width: 28, height: 22, border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: 4, cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                     </div>
-                    <div className="tr-col-sell"><F label="Vendita al Cliente €" value={d.whSellTotal || 0} onChange={v => updateF("whSellTotal", v)} /></div>
-                    <div style={{ flex: 0.6, minWidth: 60 }}>
-                      <label style={{ fontSize: 9, color: '#888', display: 'block', marginBottom: 1 }}>Margine</label>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: (d.whSellTotal || 0) - calc.totalWh >= 0 ? '#27ae60' : '#e74c3c', padding: '4px 8px' }}>
-                        €{fmt((d.whSellTotal || 0) - calc.totalWh)}
-                      </div>
-                    </div>
-                  </R>
-                </div>
-              )}
+                  );
+                })}
+                <Btn onClick={() => addObj('whItems', { desc: '', people: 1, hours: 0, costUnit: 0, sellTotal: 0 })} s>+ Turno Magazzino</Btn>
+              </div>
 
               <StaffTable listField="intStaff" calcList={visibleIntCalcs} label="Interno" isMobile={isMobile} updateObjList={updateObjList} delObj={delObj} addObj={addObj} />
               <div style={{ margin: "16px 0", borderTop: "1px solid #eaecf0" }} />
@@ -1814,30 +1781,61 @@ export default function ItineraV4({ projectId, onBack }) {
           <div id="section-costi">
             {/* ═══ OTHER COSTS (PLAN, ACCOM, ANALYTICAL, MISC) ═══ */}
             <Card title="Costi Aggiuntivi, Vitto/Alloggio & Overhead" icon="📊" open={isO("oc")} onToggle={() => tgl("oc")}>
-              {/* Pianificazione e Vitto/Alloggio — solo Home progetto */}
-              {selectedSubprojectId === null && (
-                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: isMobile ? '100%' : 200 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Pianificazione / PM — €{fmt(calc.totalPlanCost)}</div>
-                    <R>
-                      <F label="Ore PM / riunioni / admin" value={d.planHours} onChange={v => updateF("planHours", v)} />
-                      <F label="Costo orario €" value={d.planRate} onChange={v => updateF("planRate", v)} />
-                    </R>
+              {/* ═══ PIANIFICAZIONE / PM (Dynamic Grid) ═══ */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>📋 Pianificazione / PM — €{fmt(calc.totalPlanCost)}</div>
+                {visiblePlan.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, padding: '4px 0', fontSize: 9, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>
+                    <div style={{ flex: 3, minWidth: 80 }}>Descrizione</div>
+                    <div style={{ flex: 1, minWidth: 50, textAlign: 'center' }}>Ore</div>
+                    <div style={{ flex: 1, minWidth: 50, textAlign: 'center' }}>€/ora</div>
+                    <div style={{ flex: 1, minWidth: 60, textAlign: 'right' }}>Totale</div>
+                    <div style={{ width: 28 }}></div>
                   </div>
-                  <div style={{ flex: 1, minWidth: isMobile ? '100%' : 200 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Vitto & Alloggio — €{fmt(calc.totalAccom)} <span style={{ fontSize: 9, fontWeight: 400 }}>({calc.crewMeals}p)</span></div>
-                    <R>
-                      <F label="€/pasto" value={d.mealCost} onChange={v => updateF("mealCost", v)} />
-                      <F label="Pasti/gg" value={d.mealsDay} onChange={v => updateF("mealsDay", v)} />
-                      <F label="GG lavoro" value={d.workDays} onChange={v => updateF("workDays", v)} />
-                    </R>
-                    <R>
-                      <F label="Notti hotel" value={d.hotelNights} onChange={v => updateF("hotelNights", v)} />
-                      {d.hotelNights > 0 && <F label="€/notte/p" value={d.hotelCost} onChange={v => updateF("hotelCost", v)} />}
-                    </R>
+                )}
+                {visiblePlan.map(p => {
+                  const rowTotal = (p.hours || 0) * (p.costUnit || 0);
+                  return (
+                    <div key={p.id} style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '3px 0', borderBottom: '1px solid #f1f5f9' }}>
+                      <div style={{ flex: 3, minWidth: 80 }}><Inp value={p.desc} onChange={v => updateObjList('planItems', p.id, 'desc', v)} placeholder="Sopralluogo" /></div>
+                      <div style={{ flex: 1, minWidth: 50 }}><F value={p.hours} onChange={v => updateObjList('planItems', p.id, 'hours', v)} /></div>
+                      <div style={{ flex: 1, minWidth: 50 }}><F value={p.costUnit} onChange={v => updateObjList('planItems', p.id, 'costUnit', v)} /></div>
+                      <div style={{ flex: 1, minWidth: 60, textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#1B3A5C' }}>€{fmt(rowTotal)}</div>
+                      <button onClick={() => delObj('planItems', p.id)} style={{ width: 28, height: 22, border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: 4, cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                    </div>
+                  );
+                })}
+                <Btn onClick={() => addObj('planItems', { desc: '', hours: 0, costUnit: 0 })} s>+ Voce Pianificazione</Btn>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>🍽️ Vitto & Alloggio — €{fmt(calc.totalAccom)}</div>
+                {visibleAccommodations.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, padding: '4px 0', fontSize: 9, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>
+                    <div style={{ flex: 3, minWidth: 80 }}>Descrizione</div>
+                    <div style={{ flex: 1.5, minWidth: 70 }}>Tipo</div>
+                    <div style={{ flex: 1, minWidth: 50, textAlign: 'center' }}>Persone</div>
+                    <div style={{ flex: 1, minWidth: 50, textAlign: 'center' }}>GG/Notti</div>
+                    <div style={{ flex: 1.2, minWidth: 60, textAlign: 'center' }}>€/Unità</div>
+                    <div style={{ flex: 1, minWidth: 60, textAlign: 'right' }}>Totale</div>
+                    <div style={{ width: 28 }}></div>
                   </div>
-                </div>
-              )}
+                )}
+                {visibleAccommodations.map(a => {
+                  const rowTotal = (a.people || 1) * (a.days || 1) * (a.costUnit || 0);
+                  return (
+                    <div key={a.id} style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '3px 0', borderBottom: '1px solid #f1f5f9' }}>
+                      <div style={{ flex: 3, minWidth: 80 }}><Inp value={a.desc} onChange={v => updateObjList('accommodations', a.id, 'desc', v)} placeholder="Hotel 4 stelle" /></div>
+                      <div style={{ flex: 1.5, minWidth: 70 }}><Sel value={a.type} onChange={v => updateObjList('accommodations', a.id, 'type', v)} options={['Hotel', 'Pasto', 'Diaria']} /></div>
+                      <div style={{ flex: 1, minWidth: 50 }}><F value={a.people} onChange={v => updateObjList('accommodations', a.id, 'people', v)} min={1} /></div>
+                      <div style={{ flex: 1, minWidth: 50 }}><F value={a.days} onChange={v => updateObjList('accommodations', a.id, 'days', v)} min={1} /></div>
+                      <div style={{ flex: 1.2, minWidth: 60 }}><F value={a.costUnit} onChange={v => updateObjList('accommodations', a.id, 'costUnit', v)} /></div>
+                      <div style={{ flex: 1, minWidth: 60, textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#1B3A5C' }}>€{fmt(rowTotal)}</div>
+                      <button onClick={() => delObj('accommodations', a.id)} style={{ width: 28, height: 22, border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: 4, cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                    </div>
+                  );
+                })}
+                <Btn onClick={() => addObj('accommodations', { desc: '', type: 'Hotel', people: 1, days: 1, costUnit: 0 })} s>+ Spesa Trasferta</Btn>
+              </div>
 
               <div style={{ margin: "16px 0", borderTop: "1px solid #eaecf0" }} />
 
@@ -1875,18 +1873,26 @@ export default function ItineraV4({ projectId, onBack }) {
 
                 <div style={{ flex: 1, minWidth: isMobile ? '100%' : 200 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Danni, Rotture & Extra — €{fmt(calc.totalDmg + calc.totalMisc)}</div>
-                  {[...visibleDamages, ...visibleMisc].map(m => (
+                  {visibleDamages.map(m => (
                     <div key={m.id} style={{ display: "flex", gap: 4, marginBottom: 3, alignItems: "center" }}>
-                      <Inp value={m.desc} onChange={v => {
-                        if (visibleDamages.find(x => x.id === m.id)) updateObjList("damages", m.id, "desc", v);
-                        else updateObjList("misc", m.id, "desc", v);
-                      }} />
-                      <Inp type="number" value={m.cost} onChange={v => {
-                        if (visibleDamages.find(x => x.id === m.id)) updateObjList("damages", m.id, "cost", v);
-                        else updateObjList("misc", m.id, "cost", v);
-                      }} align="right" w="80px" />
+                      <Inp value={m.desc} onChange={v => updateObjList("damages", m.id, "desc", v)} />
+                      <Inp type="number" value={m.cost} onChange={v => updateObjList("damages", m.id, "cost", v)} align="right" w="80px" />
                       <span style={{ fontSize: 10, color: "#999" }}>€</span>
-                      <X onClick={() => { delObj("damages", m.id); delObj("misc", m.id); }} />
+                      <X onClick={() => delObj("damages", m.id)} />
+                    </div>
+                  ))}
+                  {visibleMisc.map(m => (
+                    <div key={m.id} style={{ display: "flex", gap: 4, marginBottom: 3, alignItems: "center" }}>
+                      <Inp value={m.desc} onChange={v => updateObjList("misc", m.id, "desc", v)} />
+                      <Inp type="number" value={m.cost} onChange={v => updateObjList("misc", m.id, "cost", v)} align="right" w="80px" />
+                      <span style={{ fontSize: 10, color: "#999" }}>€</span>
+                      <select value="misc" onChange={ev => { const nv = ev.target.value; if (nv !== 'misc') handleCategoryChange(m, 'cost_entries', nv); }} style={{ fontSize: 9, padding: '2px 4px', borderRadius: 4, border: '1px solid #ddd', fontWeight: 600, color: '#64748b', background: '#f8fafc' }}>
+                        <option value="misc">📦 Costo agg.</option>
+                        <option value="Proprio">🔵 Proprio</option>
+                        <option value="Sub-noleggio">🟠 Sub-noleggio</option>
+                        <option value="Acquisto">🟣 Acquisto</option>
+                      </select>
+                      <X onClick={() => delObj("misc", m.id)} />
                     </div>
                   ))}
                   <div style={{ display: "flex", gap: 4 }}>
@@ -1900,13 +1906,19 @@ export default function ItineraV4({ projectId, onBack }) {
             {/* ═══ CONTINGENCY + FINANCIAL COST ═══ */}
             <Card title="Contingency & Costo Finanziario" icon="🛡️" open={isO("co")} onToggle={() => tgl("co")} accent="#c0392b">
               <R>
-                <F label="Contingency % sui costi" value={d.contingencyPct} onChange={v => updateF("contingencyPct", v)} step={1} />
+                <F label="Contingency % sui costi" value={d.contingencyPct} onChange={v => updateF("contingencyPct", v)} step={1} /><InfoTooltip text="Fondo imprevisti. Copre spese extra non preventivate (es. noleggi urgenti, straordinari). Il valore ideale consigliato è tra il 5% e il 10% del totale costi." />
                 <div style={{ flex: 1, paddingTop: 12, fontSize: 11 }}> = <strong>€{fmt(calc.contingencyAmt)}</strong></div>
                 <F label="GG pagamento cliente" value={d.paymentDays} onChange={v => updateF("paymentDays", v)} />
                 <F label="Tasso interesse annuo %" value={d.interestRate} onChange={v => updateF("interestRate", v)} step={0.5} />
                 <div style={{ flex: 1, paddingTop: 12, fontSize: 11 }}> = <strong>€{fmt(calc.financialCost)}</strong></div>
               </R>
               <Sub text={`Contingency: protegge da imprevisti. Finanziario: tu anticipi/spendi €${fmt(calc.totalCosts)}, incassi a ${d.paymentDays}gg. Costa l'equivalente di €${fmt(calc.financialCost)}.`} />
+              {selectedSubprojectId === null && (
+                <R>
+                  <F label="Ammortamento materiale (€)" value={d.amortization || 0} onChange={v => updateF('amortization', v)} step={10} /><InfoTooltip text="Costo di usura del materiale di proprietà. Serve a coprire il deprezzamento dell'attrezzatura per poterla ricomprare a fine vita. Generalmente 0.5% - 2% del valore." />
+                  <div style={{ flex: 1, paddingTop: 12, fontSize: 11 }}> = <strong>€{fmt(d.amortization || 0)}</strong> incluso nei costi totali</div>
+                </R>
+              )}
             </Card>
 
           </div>

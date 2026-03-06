@@ -16,7 +16,7 @@ const STATUS_COLORS = {
     cancelled: { bg: '#fef2f2', color: '#dc2626', label: 'Annullato' },
 };
 
-const EVENT_ICONS = { Wedding: '💒', Corporate: '🏢', Fiera: '🎪', Festival: '🎶', Privato: '🏠', Istituzionale: '🏛️' };
+const EVENT_ICONS = { Wedding: '💒', Corporate: '🏢', 'Private / Party': '🎉', 'Family / Religious': '🕊️', Festival: '🎶', Altro: '📌' };
 
 export default function ProjectsList({ onSelectProject, onOpenSettings }) {
     const { user, profile, signOut, isAdmin } = useAuth();
