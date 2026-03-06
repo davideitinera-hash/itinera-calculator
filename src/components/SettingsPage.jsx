@@ -220,6 +220,9 @@ function SuppliersSection() {
     website: '', address: '', vat_number: '', payment_terms: '', rating: 3,
     notes: '', specializations: [], is_active: true,
   });
+  const [detailId, setDetailId] = useState(null);
+  const [detail, setDetail] = useState({ transactions: [], events: [], summary: null });
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const CATEGORIES = [
     { value: 'rental', label: 'Noleggio' },
@@ -303,6 +306,29 @@ function SuppliersSection() {
       showMsg('Errore eliminazione: ' + (err.message || err));
     }
   };
+
+  const loadDetail = async (supplier) => {
+    setDetailId(supplier.id);
+    setDetailLoading(true);
+    try {
+      const name = supplier.name;
+      const [txRes, evRes, sumRes] = await Promise.all([
+        supabase.from('supplier_transactions').select('*').ilike('supplier', name).order('event_date', { ascending: false }),
+        supabase.from('supplier_events').select('*').ilike('supplier', name).order('event_date', { ascending: false }),
+        supabase.from('supplier_summary').select('*').ilike('supplier', name).single(),
+      ]);
+      setDetail({
+        transactions: txRes.data || [],
+        events: evRes.data || [],
+        summary: sumRes.data || null,
+      });
+    } catch (err) {
+      console.error('[Suppliers] Detail load error:', err);
+    }
+    setDetailLoading(false);
+  };
+
+  const closeDetail = () => { setDetailId(null); setDetail({ transactions: [], events: [], summary: null }); };
 
   const filtered = suppliers.filter(s => {
     if (catFilter !== 'all' && s.category !== catFilter) return false;
@@ -394,7 +420,7 @@ function SuppliersSection() {
               </tr>
             </thead>
             <tbody>{filtered.map(s => (
-              <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: s.is_active === false ? 0.5 : 1 }}>
+              <tr key={s.id} onClick={() => loadDetail(s)} style={{ borderBottom: '1px solid #f1f5f9', opacity: s.is_active === false ? 0.5 : 1, cursor: 'pointer', background: detailId === s.id ? '#f0f7ff' : 'transparent' }}>
                 <td style={{ padding: '8px', fontWeight: 600 }}>{s.name}</td>
                 <td style={{ padding: '8px' }}>
                   <span style={{ background: '#eff6ff', color: '#2E86AB', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 600 }}>{catLabel(s.category)}</span>
@@ -421,6 +447,97 @@ function SuppliersSection() {
               </tr>
             ))}</tbody>
           </table>
+        </div>
+      )}
+
+      {detailId && (
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1B3A5C' }}>
+              {suppliers.find(s => s.id === detailId)?.name || '—'} — Scheda Fornitore
+            </div>
+            <button onClick={closeDetail} style={{ background: '#e2e8f0', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 11, cursor: 'pointer', color: '#64748b' }}>Chiudi</button>
+          </div>
+
+          {detailLoading ? <div style={{ color: '#94a3b8', fontSize: 13 }}>Caricamento dati...</div> : (
+            <>
+              {detail.summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                  {[
+                    { label: 'Spesa Totale', value: (detail.summary.total_spend || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }), color: '#dc2626' },
+                    { label: 'N. Ordini', value: detail.summary.total_items || 0, color: '#2E86AB' },
+                    { label: 'Eventi Serviti', value: detail.summary.total_events || 0, color: '#7c3aed' },
+                    { label: 'Ordine Medio', value: (detail.summary.avg_order_value || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }), color: '#f59e0b' },
+                  ].map((kpi, i) => (
+                    <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>{kpi.label}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: kpi.color, marginTop: 4 }}>{kpi.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {detail.events.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Breakdown per Evento</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                    {detail.events.map((ev, i) => (
+                      <div key={i} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 11 }}>
+                        <div style={{ fontWeight: 700, color: '#1B3A5C' }}>{ev.project_name}</div>
+                        <div style={{ color: '#64748b' }}>{ev.client_name} — {ev.event_date ? new Date(ev.event_date).toLocaleDateString('it-IT') : '—'}</div>
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{ fontWeight: 700, color: '#dc2626' }}>{(ev.event_spend || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</span>
+                          <span style={{ color: '#94a3b8', marginLeft: 6 }}>({ev.items} voci)</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {detail.transactions.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Storico Transazioni</div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Evento</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Stand</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Descrizione</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Tipo</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Qty</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Costo Unit.</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'right', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Totale</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Data</th>
+                        </tr>
+                      </thead>
+                      <tbody>{detail.transactions.map((t, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px', fontWeight: 600 }}>{t.project_name}</td>
+                          <td style={{ padding: '6px 8px', color: '#64748b' }}>{t.stand_name || '—'}</td>
+                          <td style={{ padding: '6px 8px' }}>{t.description || '—'}</td>
+                          <td style={{ padding: '6px 8px' }}>
+                            <span style={{ background: t.source === 'equipment' ? '#eff6ff' : '#fef3c7', color: t.source === 'equipment' ? '#2E86AB' : '#d97706', padding: '1px 6px', borderRadius: 8, fontSize: 9, fontWeight: 600 }}>
+                              {t.source === 'equipment' ? 'Materiale' : 'Costo'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right' }}>{t.quantity || 1}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right' }}>{(t.unit_cost || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{(t.total_cost || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                          <td style={{ padding: '6px 8px', color: '#94a3b8' }}>{t.event_date ? new Date(t.event_date).toLocaleDateString('it-IT') : '—'}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {detail.transactions.length === 0 && !detailLoading && (
+                <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', padding: 16 }}>Nessuna transazione trovata per questo fornitore.</div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -836,9 +953,9 @@ function AuditLogSection() {
     const { data } = await query;
     if (data) setLogs(data);
     setLoading(false);
-  }, [page, filter, entityFilter]); // eslint-disable-line react-hooks/exhaustive-deps -- supabase è stabile
+  }, [page, filter, entityFilter]);
 
-  useEffect(() => { loadLogs(); }, [loadLogs]);
+  useEffect(() => { loadLogs(); }, [loadLogs]); // eslint-disable-line react-hooks/set-state-in-effect
 
   const ACTION_BADGE = {
     INSERT: { bg: '#dcfce7', color: '#16a34a', label: 'Creato' },
