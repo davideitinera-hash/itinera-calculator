@@ -572,11 +572,66 @@ function SuppliersSection() {
 
 function PricingSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || { markupRules: [], seasonalRules: [], volumeDiscounts: [], applyMarkupAuto: false, applySeasonalAuto: false, applyVolumeAuto: false });
-  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
+  const catMarkup = data?.categoryMarkupRules || [];
+  const [categoryRules, setCategoryRules] = useState(catMarkup);
+  const [applyCatAuto, setApplyCatAuto] = useState(data?.applyCategoryMarkupAuto || false);
+  useEffect(() => { if (data) { setForm(data); setCategoryRules(data.categoryMarkupRules || []); setApplyCatAuto(data.applyCategoryMarkupAuto || false); } }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
   const updateArr = (arrKey, idx, field, val) => setForm(prev => ({ ...prev, [arrKey]: prev[arrKey].map((item, i) => i === idx ? { ...item, [field]: val } : item) }));
   const removeArr = (arrKey, idx) => setForm(prev => ({ ...prev, [arrKey]: prev[arrKey].filter((_, i) => i !== idx) }));
   return (
     <Card title="Listino Prezzi / Markup" desc="Regole di pricing per tipo evento, stagione, volume">
+      {/* ── INFO BOX: ORDINE DI APPLICAZIONE ── */}
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 12, marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#1B3A5C', marginBottom: 6 }}>Come funzionano le regole di pricing</div>
+        <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>
+          Le regole si applicano in ordine: <strong>1. Categoria materiale</strong> → <strong>2. Tipo evento</strong> → <strong>3. Stagionalita</strong> → <strong>4. Volume</strong>.
+          Ogni livello e indipendente e si attiva solo col toggle "Applica automaticamente".
+          <br />I markup sono suggerimenti — possono essere disattivati per singolo progetto dal calculator.
+        </div>
+      </div>
+
+      {/* ── MARKUP PER CATEGORIA MATERIALE ── */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Markup per Categoria Materiale</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, marginBottom: 12 }}>
+          <input type="checkbox" checked={applyCatAuto} onChange={e => setApplyCatAuto(e.target.checked)} style={{ width: 16, height: 16 }} />
+          <span>Applica automaticamente</span>
+        </label>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 8 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Categoria</th>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase', width: 100 }}>Markup %</th>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Etichetta</th>
+              <th style={{ padding: '8px', width: 50 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {categoryRules.map((r, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '8px' }}>
+                  <input value={r.category} onChange={e => { const v = [...categoryRules]; v[i] = { ...v[i], category: e.target.value }; setCategoryRules(v); }}
+                    style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '4px 8px', fontSize: 12, width: '100%' }} />
+                </td>
+                <td style={{ padding: '8px' }}>
+                  <input type="number" value={r.markupPct} onChange={e => { const v = [...categoryRules]; v[i] = { ...v[i], markupPct: Number(e.target.value) }; setCategoryRules(v); }}
+                    style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '4px 8px', fontSize: 12, width: '100%' }} />
+                </td>
+                <td style={{ padding: '8px' }}>
+                  <input value={r.label} onChange={e => { const v = [...categoryRules]; v[i] = { ...v[i], label: e.target.value }; setCategoryRules(v); }}
+                    style={{ border: '1px solid #e2e8f0', borderRadius: 4, padding: '4px 8px', fontSize: 12, width: '100%' }} />
+                </td>
+                <td style={{ padding: '8px', textAlign: 'center' }}>
+                  <button onClick={() => setCategoryRules(categoryRules.filter((_, j) => j !== i))}
+                    style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 50, width: 24, height: 24, cursor: 'pointer', color: '#dc2626', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <Btn onClick={() => setCategoryRules([...categoryRules, { category: '', markupPct: 0, label: '' }])} color="#16a34a">+ Regola</Btn>
+      </div>
+
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Markup per Tipo Evento</div>
         <Toggle value={form.applyMarkupAuto} onChange={v => setForm(p => ({ ...p, applyMarkupAuto: v }))} label="Applica automaticamente" />
@@ -604,7 +659,7 @@ function PricingSection({ data, onSave, saving }) {
         </table>
         <Btn onClick={() => setForm(p => ({ ...p, volumeDiscounts: [...p.volumeDiscounts, { minAmount: 0, maxAmount: 0, discountPct: 0, label: '' }] }))} color="#16a34a" small>+ Fascia</Btn>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Btn onClick={() => onSave('pricing', form)}>Salva Listino</Btn><SaveIndicator saving={saving} /></div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><Btn onClick={() => onSave('pricing', { ...form, categoryMarkupRules: categoryRules, applyCategoryMarkupAuto: applyCatAuto, applicationOrder: '1. Markup per categoria materiale → 2. Markup per tipo evento → 3. Aggiustamento stagionale → 4. Sconto volume. Le regole sono cumulative solo se attivate.', projectOverrideEnabled: true })}>Salva Listino</Btn><SaveIndicator saving={saving} /></div>
     </Card>
   );
 }
