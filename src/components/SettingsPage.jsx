@@ -1298,6 +1298,147 @@ function UsersSection() {
   );
 }
 
+function CostCategoriesSection({ config, onSave }) {
+  const cats = config?.costCategories?.items || [];
+  const [items, setItems] = useState(cats);
+  const [editIdx, setEditIdx] = useState(null);
+  const [form, setForm] = useState({ label: '', value: '', icon: '', color: '#6b7280', hasVat: false, hasSupplier: false });
+
+  useEffect(() => { setItems(config?.costCategories?.items || []); }, [config]); // eslint-disable-line react-hooks/set-state-in-effect
+
+  const updateField = (key, val) => setForm(p => ({ ...p, [key]: val }));
+
+  const openEdit = (idx) => {
+    setEditIdx(idx);
+    setForm({ ...items[idx] });
+  };
+
+  const openNew = () => {
+    setEditIdx('new');
+    setForm({ label: '', value: '', icon: '📦', color: '#6b7280', hasVat: false, hasSupplier: false });
+  };
+
+  const saveItem = () => {
+    if (!form.label.trim()) return;
+    const val = form.value || form.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const item = { ...form, value: val };
+    let newItems;
+    if (editIdx === 'new') {
+      newItems = [...items, item];
+    } else {
+      newItems = items.map((it, i) => i === editIdx ? item : it);
+    }
+    setItems(newItems);
+    setEditIdx(null);
+    onSave('costCategories', { items: newItems });
+  };
+
+  const removeItem = (idx) => {
+    const newItems = items.filter((_, i) => i !== idx);
+    setItems(newItems);
+    onSave('costCategories', { items: newItems });
+  };
+
+  const moveItem = (idx, dir) => {
+    const newItems = [...items];
+    const target = idx + dir;
+    if (target < 0 || target >= newItems.length) return;
+    [newItems[idx], newItems[target]] = [newItems[target], newItems[idx]];
+    setItems(newItems);
+    onSave('costCategories', { items: newItems });
+  };
+
+  const ICONS = ['🏗️', '🛒', '📊', '⚠️', '📎', '🍽️', '🎵', '💐', '🚛', '💡', '🎨', '📦', '🔧', '🎪', '📋', '🏠', '🔌', '🖨️'];
+
+  return (
+    <Card title="Categorie Costo" desc="Gestisci le categorie per i costi extra dei progetti">
+      <div style={{ marginBottom: 16 }}>
+        <Btn onClick={openNew} color="#16a34a">+ Nuova Categoria</Btn>
+      </div>
+
+      {editIdx !== null && (
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 12 }}>{editIdx === 'new' ? 'Nuova Categoria' : 'Modifica Categoria'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <Field label="Nome *"><Input value={form.label} onChange={v => updateField('label', v)} placeholder="es. Catering" /></Field>
+            <Field label="Codice (auto)"><Input value={form.value} onChange={v => updateField('value', v)} placeholder="auto-generato" /></Field>
+            <Field label="Colore">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input type="color" value={form.color} onChange={e => updateField('color', e.target.value)} style={{ width: 36, height: 30, border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer' }} />
+                <Input value={form.color} onChange={v => updateField('color', v)} />
+              </div>
+            </Field>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 8 }}>
+            <Field label="Icona">
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {ICONS.map(ic => (
+                  <button key={ic} onClick={() => updateField('icon', ic)}
+                    style={{ fontSize: 18, background: form.icon === ic ? '#dbeafe' : 'transparent', border: form.icon === ic ? '2px solid #2E86AB' : '1px solid #e2e8f0', borderRadius: 6, width: 34, height: 34, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ic}</button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Opzioni">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, marginBottom: 4 }}>
+                <input type="checkbox" checked={form.hasVat} onChange={e => updateField('hasVat', e.target.checked)} /> Gestisce IVA
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+                <input type="checkbox" checked={form.hasSupplier} onChange={e => updateField('hasSupplier', e.target.checked)} /> Ha fornitore
+              </label>
+            </Field>
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <Btn onClick={saveItem}>{editIdx === 'new' ? 'Aggiungi' : 'Aggiorna'}</Btn>
+            <Btn onClick={() => setEditIdx(null)} color="#64748b">Annulla</Btn>
+          </div>
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 20 }}>Nessuna categoria. Clicca "+ Nuova Categoria".</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: 10, textTransform: 'uppercase', width: 40 }}>Ord.</th>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Categoria</th>
+              <th style={{ padding: '8px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Codice</th>
+              <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>IVA</th>
+              <th style={{ padding: '8px', textAlign: 'center', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Fornitore</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: '#64748b', fontSize: 10, textTransform: 'uppercase' }}>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>{items.map((it, i) => (
+            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '8px', textAlign: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                  <button onClick={() => moveItem(i, -1)} disabled={i === 0} style={{ border: 'none', background: 'none', cursor: i === 0 ? 'default' : 'pointer', color: i === 0 ? '#e2e8f0' : '#94a3b8', fontSize: 10 }}>▲</button>
+                  <button onClick={() => moveItem(i, 1)} disabled={i === items.length - 1} style={{ border: 'none', background: 'none', cursor: i === items.length - 1 ? 'default' : 'pointer', color: i === items.length - 1 ? '#e2e8f0' : '#94a3b8', fontSize: 10 }}>▼</button>
+                </div>
+              </td>
+              <td style={{ padding: '8px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 16 }}>{it.icon}</span>
+                  <span style={{ fontWeight: 600, color: it.color || '#333' }}>{it.label}</span>
+                </span>
+              </td>
+              <td style={{ padding: '8px', color: '#94a3b8', fontFamily: 'monospace', fontSize: 11 }}>{it.value}</td>
+              <td style={{ padding: '8px', textAlign: 'center' }}>{it.hasVat ? '✅' : '—'}</td>
+              <td style={{ padding: '8px', textAlign: 'center' }}>{it.hasSupplier ? '✅' : '—'}</td>
+              <td style={{ padding: '8px', textAlign: 'right' }}>
+                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                  <button onClick={() => openEdit(i)} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#2E86AB' }}>Modifica</button>
+                  <button onClick={() => removeItem(i)} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer', color: '#dc2626' }}>Elimina</button>
+                </div>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
 const SECTIONS = [
   { id: 'general', label: 'Generali' },
   { id: 'fuel', label: 'Carburante' },
@@ -1362,7 +1503,7 @@ export default function SettingsPage({ onBack }) {
       case 'statuses': return <EditableListSection title="Stati Progetto" desc="Stati e colori" category="projectStatuses" data={config.projectStatuses} onSave={handleSave} saving={saving} columns={[{ key: 'value', label: 'Codice' }, { key: 'label', label: 'Etichetta' }, { key: 'bgColor', label: 'Sfondo', type: 'color' }, { key: 'textColor', label: 'Testo', type: 'color' }]} newItem={{ value: 'new', label: 'Nuovo', bgColor: '#f1f5f9', textColor: '#475569' }} />;
       case 'defaults': return <DefaultsSection data={config.defaults} onSave={handleSave} saving={saving} />;
       case 'staffRoles': return <StaffRolesSection data={config.staffRoles} onSave={handleSave} saving={saving} />;
-      case 'costCategories': return <EditableListSection title="Categorie Costo" desc="Personalizza le categorie di costo" category="costCategories" data={config.costCategories} onSave={handleSave} saving={saving} columns={[{ key: 'icon', label: 'Icona' }, { key: 'value', label: 'Codice' }, { key: 'label', label: 'Etichetta' }, { key: 'color', label: 'Colore', type: 'color' }, { key: 'hasSupplier', label: 'Fornitore', type: 'checkbox' }, { key: 'hasVat', label: 'IVA', type: 'checkbox' }]} newItem={{ icon: '', value: 'new_cat', label: 'Nuova Categoria', color: '#6b7280', hasSupplier: false, hasVat: false }} />;
+      case 'costCategories': return <CostCategoriesSection config={config} onSave={handleSave} />;
       case 'suppliers': return <SuppliersSection supplierCategories={config.supplierCategories} />;
       case 'pricing': return <PricingSection data={config.pricing} onSave={handleSave} saving={saving} />;
       case 'customFields': return <CustomFieldsSection />;
