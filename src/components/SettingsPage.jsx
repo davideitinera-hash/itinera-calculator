@@ -434,9 +434,9 @@ function TaxSection({ data, onSave, saving }) {
 
 function BrandingSection({ config, onSave }) {
   const cat = config?.branding || {};
-  const [logo, setLogo] = useState(cat.logo || '');
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({
+    logo: cat.logo || '',
     companyFullName: cat.companyFullName || '',
     tagline: cat.tagline || '',
     website: cat.website || '',
@@ -479,7 +479,7 @@ function BrandingSection({ config, onSave }) {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('branding').getPublicUrl(path);
       const urlWithCacheBust = publicUrl + '?v=' + Date.now();
-      setLogo(urlWithCacheBust);
+      updateField('logo', urlWithCacheBust);
     } catch (err) {
       alert('Errore upload: ' + (err.message || err));
     }
@@ -490,14 +490,14 @@ function BrandingSection({ config, onSave }) {
     try {
       const files = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.svg', 'logo.webp'];
       await supabase.storage.from('branding').remove(files);
-      setLogo('');
+      updateField('logo', '');
     } catch (err) {
       console.error('[Branding] Remove logo error:', err);
     }
   };
 
   const handleSave = () => {
-    onSave('branding', { ...form, logo });
+    onSave('branding', form);
   };
 
   const SectionTitle = ({ children }) => (
@@ -517,8 +517,8 @@ function BrandingSection({ config, onSave }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: '#f8fafc', overflow: 'hidden', flexShrink: 0,
         }}>
-          {logo ? (
-            <img src={logo} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          {form.logo ? (
+            <img src={form.logo} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           ) : (
             <span style={{ color: '#94a3b8', fontSize: 11, textAlign: 'center' }}>Nessun logo</span>
           )}
@@ -532,7 +532,7 @@ function BrandingSection({ config, onSave }) {
             <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
               onChange={e => uploadLogo(e.target.files[0])} style={{ display: 'none' }} />
           </label>
-          {logo && (
+          {form.logo && (
             <button onClick={removeLogo} style={{
               background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6,
               padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#dc2626',
