@@ -12,7 +12,7 @@ const fmtD = v => (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, m
 // 1. ANALYTICAL PDF REPORT (Full financial data — jsPDF)
 // ═══════════════════════════════════════════════════════════════
 // eslint-disable-next-line react-refresh/only-export-components
-export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubprojectId = null) {
+export async function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubprojectId = null) {
   try {
     const d = projectData;
     const branding = appConfig?.branding || {};
@@ -37,19 +37,47 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
     const pageW = doc.internal.pageSize.getWidth();
     let y = 0;
 
+    // ── LOAD LOGO ──
+    let logoImg = null;
+    const logoUrl = branding.logo;
+    if (logoUrl) {
+      try {
+        const resp = await fetch(logoUrl);
+        const blob = await resp.blob();
+        logoImg = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        console.error('[PDF] Logo load failed:', e);
+      }
+    }
+
     // ── HEADER BAR ──
     doc.setFillColor(...primaryRgb);
     doc.rect(0, 0, pageW, 28, 'F');
     doc.setFillColor(...accentRgb);
     doc.rect(0, 26, pageW, 2, 'F');
 
+    // Logo + Company name
+    let textStartX = 10;
+    if (logoImg) {
+      try {
+        doc.addImage(logoImg, 'PNG', 6, 3, 22, 22);
+        textStartX = 30;
+      } catch (e) {
+        console.error('[PDF] Logo render failed:', e);
+      }
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text(companyName, 10, 12);
+    doc.text(companyName, textStartX, 12);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text('REPORT ANALITICO INTERNO', 10, 19);
+    doc.text('REPORT ANALITICO INTERNO', textStartX, 19);
 
     // Right-side meta
     doc.setFontSize(8);
@@ -214,7 +242,7 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
             }
           }
         },
-        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber, branding); },
       });
       y = doc.lastAutoTable.finalY + 8;
     }
@@ -268,7 +296,7 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
           12: { halign: 'center', cellWidth: 14 },
         },
         margin: { left: 10, right: 10 },
-        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber, branding); },
       });
       y = doc.lastAutoTable.finalY + 8;
     }
@@ -325,7 +353,7 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
           11: { halign: 'center', cellWidth: 18 },
         },
         margin: { left: 10, right: 10 },
-        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber, branding); },
       });
       y = doc.lastAutoTable.finalY + 8;
     }
@@ -403,7 +431,7 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
           11: { halign: 'center', cellWidth: 18 },
         },
         margin: { left: 10, right: 10 },
-        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber); },
+        didDrawPage: (data) => { addPageFooter(doc, data.pageNumber, branding); },
       });
       y = doc.lastAutoTable.finalY + 8;
     }
@@ -573,11 +601,62 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
 
     y = doc.lastAutoTable.finalY + 10;
 
-    // Watermark note
+    // ── LEGAL NOTES & PAYMENT TERMS ──
+    const legalNotes = branding.quoteLegalNotes || '';
+    const paymentTerms = branding.quotePaymentTerms || '';
+    if (legalNotes || paymentTerms) {
+      if (y > doc.internal.pageSize.getHeight() - 40) {
+        doc.addPage();
+        addPageFooter(doc, doc.internal.getNumberOfPages(), branding);
+        y = 15;
+      }
+      doc.setDrawColor(...accentRgb);
+      doc.setLineWidth(0.5);
+      doc.line(10, y, pageW - 10, y);
+      y += 5;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(60, 60, 60);
+      if (legalNotes) {
+        doc.text('Note:', 10, y);
+        doc.setFont('helvetica', 'normal');
+        const noteLines = doc.splitTextToSize(legalNotes, pageW - 25);
+        doc.text(noteLines, 10, y + 4);
+        y += 4 + noteLines.length * 3.5;
+      }
+      if (paymentTerms) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Condizioni di pagamento:', 10, y + 2);
+        doc.setFont('helvetica', 'normal');
+        const termLines = doc.splitTextToSize(paymentTerms, pageW - 25);
+        doc.text(termLines, 10, y + 6);
+        y += 6 + termLines.length * 3.5;
+      }
+      y += 4;
+    }
+
+    // Watermark on all pages if enabled
+    if (branding.pdfWatermark) {
+      const wmText = branding.pdfWatermarkText || 'BOZZA';
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setFontSize(60);
+        doc.setTextColor(220, 220, 220);
+        doc.setFont('helvetica', 'bold');
+        const pw = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
+        doc.text(wmText, pw / 2, ph / 2, { align: 'center', angle: 35 });
+      }
+    }
+
+    // Confidentiality note
+    doc.setPage(doc.internal.getNumberOfPages());
+    y = doc.internal.pageSize.getHeight() - 12;
     doc.setFontSize(7);
     doc.setFont('helvetica', 'italic');
     doc.setTextColor(180, 180, 180);
-    doc.text('Documento riservato — Solo per uso interno. I dati sono calcolati automaticamente dal sistema Itinera Calculator.', 10, y);
+    doc.text('Documento riservato — Solo per uso interno. Dati calcolati automaticamente dal sistema Itinera Calculator.', 10, y);
 
     // ── SAVE ──
     const safeName = (d.projectName || 'Progetto').replace(/[^a-zA-Z0-9_\- àèéìòùÀÈÉÌÒÙ]/g, '_');
@@ -588,13 +667,14 @@ export function generateAnalyticalPDF(projectData, calc, appConfig, selectedSubp
   }
 }
 
-function addPageFooter(doc, pageNumber) {
+function addPageFooter(doc, pageNumber, branding = {}) {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(150, 150, 150);
-  doc.text('Report Analitico Interno — Documento Riservato', 10, pageH - 5);
+  const footerText = branding.pdfFooterText || 'Report Analitico Interno — Documento Riservato';
+  doc.text(footerText, 10, pageH - 5);
   doc.text(`Pagina ${pageNumber}`, pageW - 10, pageH - 5, { align: 'right' });
 }
 
@@ -704,7 +784,10 @@ export default function ExportDropdown({ projectData, calc, appConfig, selectedS
   const handlePDF = () => {
     setOpen(false);
     setTimeout(() => {
-      generateAnalyticalPDF(projectData, calc, appConfig, selectedSubprojectId);
+      generateAnalyticalPDF(projectData, calc, appConfig, selectedSubprojectId).catch(err => {
+        console.error('[PDF] Export failed:', err);
+        alert('Errore generazione PDF: ' + (err.message || err));
+      });
     }, 100);
   };
 
