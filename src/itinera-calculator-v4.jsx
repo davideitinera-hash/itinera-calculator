@@ -42,7 +42,6 @@ const OT_MULT = { ordinario: 1.00, straordinario: 1.25, festivo: 1.50, notturno:
 const fmt = v => (v || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 });
 const fmtD = (v, d = 1) => (v || 0).toLocaleString("it-IT", { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtD2 = v => fmtD(v, 2);
-const pc = (v, t) => t > 0 ? v / t * 100 : 0;
 
 // ═══ HOOKS ═══
 
@@ -468,16 +467,15 @@ export default function ItineraV4({ projectId, onBack, onOpenCrm, onOpenAccounti
   // ═══ CALCOLI FINANZIARI (estratti in hook dedicato) ═══
   const {
     visibleLegs, visibleAnalytics, visibleDamages, visibleMisc, visiblePhases, visibleAccommodations, visiblePlan, visibleWh,
-    calcEqItems, calcLegs, calcIntStaff, calcExtStaff, calcAnalytics, calcDamages, calcMisc, calcPhases, calcAccommodations, calcPlan, calcWh,
     calc, visibleEqCalcs, visibleIntCalcs, visibleExtCalcs,
     vt, spBreakdown, activeAlerts, pricingSuggestion,
   } = useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, VEH_DYN, OT_MULT_DYN, DIESEL_DYN);
 
   // Helpers to update global state easily
-  const updateF = (field, val) => updateField(field, val);
-  const updateObjList = (field, id, objField, val) => updateItem(field, id, objField, val);
-  const addObj = (field, newObj) => addItem(field, { ...newObj, subprojectId: selectedSubprojectId || null });
-  const delObj = (field, id) => deleteItem(field, id);
+  const updateF = useCallback((field, val) => updateField(field, val), [updateField]);
+  const updateObjList = useCallback((field, id, objField, val) => updateItem(field, id, objField, val), [updateItem]);
+  const addObj = useCallback((field, newObj) => addItem(field, { ...newObj, subprojectId: selectedSubprojectId || null }), [addItem, selectedSubprojectId]);
+  const delObj = useCallback((field, id) => deleteItem(field, id), [deleteItem]);
 
   // ═══ UNIVERSAL CATEGORY CHANGE (cross-table) ═══
   const handleCategoryChange = useCallback(async (item, sourceTable, newCategory) => {

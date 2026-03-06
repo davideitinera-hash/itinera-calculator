@@ -28,7 +28,7 @@ const Btn = ({ onClick, children, color = '#8e44ad' }) => (
 const fmt = v => (v || 0).toLocaleString('it-IT', { maximumFractionDigits: 0 });
 
 // ═══ MAIN COMPONENT ═══
-export function ProductionSection({ phases, onUpdate, onAdd, onDelete, getDragProps, isMobile }) {
+export function ProductionSection({ phases, onUpdate, onAdd, onDelete, getDragProps }) {
     // ── CALCS ──
     const phaseCalcs = useMemo(() => {
         return (phases || []).map(p => ({

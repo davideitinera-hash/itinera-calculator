@@ -209,9 +209,7 @@ export function useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, 
             totalPlanCost, totalAccom, totalAn, totalDmg, totalMisc, totalPhHours, agencyFeeTotal,
             costMaterial, costsBeforeContingency, contingencyAmt, totalCosts, financialCost, totalCostsAll, amortCost
         };
-    }, [d?.revenueMode, d?.revenueGross, d?.discType, d?.discVal,
-    d?.agencyFeeType, d?.agencyFeeValue, d?.amortization,
-    d?.contingencyPct, d?.interestRate, d?.paymentDays, d?.totalWorkDays,
+    }, [d,
         calcEqItems, calcLegs, calcIntStaff, calcExtStaff,
         calcAnalytics, calcDamages, calcMisc, calcPhases,
         calcAccommodations, calcPlan, calcWh,
@@ -272,7 +270,7 @@ export function useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, 
             const totalCost = matCost + trCost + staffCost + extraCost;
             return { ...sp, matCost, matRev, trCost, staffCost, extraCost, totalCost };
         });
-    }, [d?.subprojects, d?.eqItems, d?.legs, d?.intStaff, d?.extStaff, d?.analytics, d?.damages, d?.misc]);
+    }, [d]);
 
     const activeAlerts = useMemo(() => {
         if (!d || !appConfig?.alerts?.rules) return [];
@@ -295,9 +293,7 @@ export function useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, 
                 default: return false;
             }
         });
-    }, [d?.contingencyPct, calc?.marginPct, calc?.revenueNet,
-    calc?.totalTransport, calc?.totalInt, calc?.totalExt,
-    appConfig?.alerts?.rules]);
+    }, [d, calc, appConfig]);
 
     const pricingSuggestion = useMemo(() => {
         if (!d || !appConfig?.pricing || !calc.revenueNet) return null;
@@ -330,8 +326,7 @@ export function useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, 
         }
 
         return suggestions.length > 0 ? suggestions : null;
-    }, [d?.eventType, d?.eventDate, d?.revenueGross,
-    calc?.revenueNet, calc?.totalCosts, appConfig?.pricing]);
+    }, [d, calc, appConfig]);
 
     return {
         // Visible items (per tabelle UI)

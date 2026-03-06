@@ -223,6 +223,7 @@ function SuppliersSection() {
   const [detailId, setDetailId] = useState(null);
   const [detail, setDetail] = useState({ transactions: [], events: [], summary: null });
   const [detailLoading, setDetailLoading] = useState(false);
+  const [txSearch, setTxSearch] = useState('');
 
   const CATEGORIES = [
     { value: 'rental', label: 'Noleggio' },
@@ -309,6 +310,7 @@ function SuppliersSection() {
 
   const loadDetail = async (supplier) => {
     setDetailId(supplier.id);
+    setTxSearch('');
     setDetailLoading(true);
     try {
       const name = supplier.name;
@@ -498,11 +500,14 @@ function SuppliersSection() {
               {detail.transactions.length > 0 && (
                 <>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Storico Transazioni</div>
+                  <input value={txSearch || ''} onChange={e => setTxSearch(e.target.value)} placeholder="Cerca per descrizione, evento, stand, codice commessa..."
+                    style={{ width: '100%', padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                       <thead>
                         <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Evento</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Commessa</th>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Stand</th>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Descrizione</th>
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Tipo</th>
@@ -512,9 +517,18 @@ function SuppliersSection() {
                           <th style={{ padding: '6px 8px', textAlign: 'left', color: '#64748b', fontSize: 9, textTransform: 'uppercase' }}>Data</th>
                         </tr>
                       </thead>
-                      <tbody>{detail.transactions.map((t, i) => (
+                      <tbody>{detail.transactions.filter(t => {
+                        if (!txSearch) return true;
+                        const s = txSearch.toLowerCase();
+                        return (t.description || '').toLowerCase().includes(s) ||
+                          (t.project_name || '').toLowerCase().includes(s) ||
+                          (t.stand_name || '').toLowerCase().includes(s) ||
+                          (t.project_code || '').toLowerCase().includes(s) ||
+                          (t.category || '').toLowerCase().includes(s);
+                      }).map((t, i) => (
                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '6px 8px', fontWeight: 600 }}>{t.project_name}</td>
+                          <td style={{ padding: '6px 8px', color: '#94a3b8', fontFamily: 'monospace', fontSize: 10 }}>{t.project_code || '—'}</td>
                           <td style={{ padding: '6px 8px', color: '#64748b' }}>{t.stand_name || '—'}</td>
                           <td style={{ padding: '6px 8px' }}>{t.description || '—'}</td>
                           <td style={{ padding: '6px 8px' }}>
