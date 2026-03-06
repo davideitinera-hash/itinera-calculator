@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppConfig } from '../hooks/useAppConfig';
 import { supabase } from '../lib/supabaseClient';
@@ -502,7 +502,7 @@ function AuditLogSection() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 25;
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     let query = supabase
       .from('audit_log')
@@ -516,9 +516,9 @@ function AuditLogSection() {
     const { data } = await query;
     if (data) setLogs(data);
     setLoading(false);
-  };
+  }, [page, filter, entityFilter]); // eslint-disable-line react-hooks/exhaustive-deps -- supabase è stabile
 
-  useEffect(() => { loadLogs(); }, [page, filter, entityFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadLogs(); }, [loadLogs]);
 
   const ACTION_BADGE = {
     INSERT: { bg: '#dcfce7', color: '#16a34a', label: 'Creato' },
