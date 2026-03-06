@@ -238,8 +238,8 @@ function SupplierInput({ value, onChange, placeholder, suppliersList, onAutoSave
 // Staff Sub-component mapping (moved outside of main component)
 const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delObj, addObj }) => {
   const cols = isMobile
-    ? "1.6fr 0.35fr 0.5fr 0.35fr 0.35fr 0.35fr 0.35fr 0.6fr 0.6fr 0.5fr auto"
-    : "1.8fr 0.4fr 0.6fr 0.4fr 0.4fr 0.4fr 0.4fr 0.7fr 0.7fr 0.6fr auto";
+    ? "1.6fr 0.35fr 0.5fr 0.35fr 0.35fr 0.35fr 0.35fr 0.35fr 0.5fr 0.6fr 0.6fr 0.5fr auto"
+    : "1.8fr 0.4fr 0.6fr 0.4fr 0.4fr 0.4fr 0.4fr 0.35fr 0.5fr 0.7fr 0.7fr 0.6fr auto";
   const mw = isMobile ? 700 : 800;
   const totCost = calcList.reduce((s, r) => s + r.total, 0);
   const totRev = calcList.reduce((s, r) => s + (r.sellTotal || 0), 0);
@@ -249,7 +249,7 @@ const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delOb
     <>
       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginBottom: 3 }}>
-          {["Ruolo", "N°", "€/h", "Ord", "Str ×1.25", "Fest ×1.5", "Nott ×1.15", "Costo", "Vendita €", "Margine", ""].map(h => <span key={h} style={{ fontSize: 8, color: h === "Vendita €" ? "#27ae60" : "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
+          {["Ruolo", "N°", "€/h", "Ord", "Str ×1.25", "Fest ×1.5", "Nott ×1.15", "GG", "", "Costo", "Vendita €", "Margine", ""].map((h, i) => <span key={h + i} style={{ fontSize: 8, color: h === "Vendita €" ? "#27ae60" : "#999", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>)}
         </div>
         {calcList.map(s => {
           const margin = (s.sellTotal || 0) - s.total;
@@ -264,6 +264,8 @@ const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delOb
               <Inp type="number" value={s.hStr} onChange={v => updateObjList(listField, s.id, "hStr", v)} align="center" />
               <Inp type="number" value={s.hFest} onChange={v => updateObjList(listField, s.id, "hFest", v)} align="center" />
               <Inp type="number" value={s.hNott} onChange={v => updateObjList(listField, s.id, "hNott", v)} align="center" />
+              <Inp type="number" value={s.days || 1} onChange={v => updateObjList(listField, s.id, "days", v)} align="center" w={60} vr={{ min: 0.5, max: 365 }} />
+              <span style={{ fontSize: 9, color: '#94a3b8' }}>{(s.hOrd + s.hStr + s.hFest + s.hNott) * (s.days || 1)}h tot</span>
               <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right", transition: 'color 0.3s ease' }}>€{fmt(s.total)}</div>
               <div className="tr-col-sell"><Inp type="number" value={s.sellTotal || 0} onChange={v => updateObjList(listField, s.id, "sellTotal", v)} align="center" /></div>
               <div style={{ fontSize: 9, fontWeight: 700, color: mColor, textAlign: 'center' }}>
@@ -275,7 +277,7 @@ const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delOb
         })}
         {calcList.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: cols, gap: 3, minWidth: mw, marginTop: 4, paddingTop: 4, borderTop: '1px solid #eaecf0' }}>
-            <span style={{ fontSize: 9, fontWeight: 700, color: '#1B3A5C', gridColumn: 'span 7' }}>TOTALI</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#1B3A5C', gridColumn: 'span 9' }}>TOTALI</span>
             <div style={{ fontSize: 11, fontWeight: 700, textAlign: 'right' }}>€{fmt(totCost)}</div>
             <div style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', color: '#2E86AB' }}>€{fmt(totRev)}</div>
             <div style={{ fontSize: 9, fontWeight: 700, color: totMargin >= 0 ? '#27ae60' : '#e74c3c', textAlign: 'center' }}>
@@ -285,7 +287,7 @@ const StaffTable = ({ listField, calcList, label, isMobile, updateObjList, delOb
           </div>
         )}
       </div>
-      <Btn onClick={() => addObj(listField, { role: "", count: 1, costHour: 20, hOrd: 8, hStr: 0, hFest: 0, hNott: 0, sellTotal: 0 })} s>+ {label}</Btn>
+      <Btn onClick={() => addObj(listField, { role: "", count: 1, costHour: 20, hOrd: 8, hStr: 0, hFest: 0, hNott: 0, days: 1, sellTotal: 0 })} s>+ {label}</Btn>
     </>
   );
 };

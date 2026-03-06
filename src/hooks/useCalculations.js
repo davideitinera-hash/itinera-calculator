@@ -136,7 +136,7 @@ export function useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, 
         const weightOverflow = totalWeight > 0 && fleetCapKg > 0 && totalWeight > fleetCapKg;
 
         // Staff
-        const cStaff = s => ({ ...s, total: s.count * s.costHour * (s.hOrd * OT_MULT_DYN.ordinario + s.hStr * OT_MULT_DYN.straordinario + s.hFest * OT_MULT_DYN.festivo + s.hNott * OT_MULT_DYN.notturno), totalHours: s.hOrd + s.hStr + s.hFest + s.hNott });
+        const cStaff = s => ({ ...s, total: s.count * s.costHour * (s.hOrd * OT_MULT_DYN.ordinario + s.hStr * OT_MULT_DYN.straordinario + s.hFest * OT_MULT_DYN.festivo + s.hNott * OT_MULT_DYN.notturno) * (s.days || 1), totalHours: s.hOrd + s.hStr + s.hFest + s.hNott });
         const intCalcs = calcIntStaff.map(cStaff);
         const totalInt = intCalcs.reduce((s, l) => s + l.total, 0);
         const totalIntP = calcIntStaff.reduce((s, l) => s + l.count, 0);
@@ -265,7 +265,7 @@ export function useCalculations(d, appConfig, selectedSubprojectId, ROUTES_DYN, 
             const spLegs = (d.legs || []).filter(l => (l.subprojectId || null) === sp.id);
             const trCost = spLegs.reduce((s, l) => s + ((l.rentalDay || 0) * (l.rentalDays || 1) * (l.nVeh || 1)), 0);
             const spStaff = [...(d.intStaff || []), ...(d.extStaff || [])].filter(x => (x.subprojectId || null) === sp.id);
-            const staffCost = spStaff.reduce((s, x) => s + (x.count || 0) * (x.costHour || 0) * ((x.hOrd || 0) + (x.hStr || 0) + (x.hFest || 0) + (x.hNott || 0)), 0);
+            const staffCost = spStaff.reduce((s, x) => s + (x.count || 0) * (x.costHour || 0) * ((x.hOrd || 0) + (x.hStr || 0) + (x.hFest || 0) + (x.hNott || 0)) * (x.days || 1), 0);
             const extraCost = [...(d.analytics || []), ...(d.damages || []), ...(d.misc || [])].filter(c => (c.subprojectId || null) === sp.id).reduce((s, c) => s + (c.cost || 0), 0);
             const totalCost = matCost + trCost + staffCost + extraCost;
             return { ...sp, matCost, matRev, trCost, staffCost, extraCost, totalCost };
