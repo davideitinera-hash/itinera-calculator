@@ -432,47 +432,197 @@ function TaxSection({ data, onSave, saving }) {
   );
 }
 
-function BrandingSection({ data, onSave, saving }) {
-  const [form, setForm] = useState(data || {});
-  useEffect(() => { if (data) setForm(data); }, [data]); // eslint-disable-line react-hooks/set-state-in-effect
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+function BrandingSection({ config, onSave }) {
+  const cat = config?.branding || {};
+  const [logo, setLogo] = useState(cat.logo || '');
+  const [uploading, setUploading] = useState(false);
+  const [form, setForm] = useState({
+    companyFullName: cat.companyFullName || '',
+    tagline: cat.tagline || '',
+    website: cat.website || '',
+    email: cat.email || '',
+    phone: cat.phone || '',
+    pec: cat.pec || '',
+    vatNumber: cat.vatNumber || '',
+    fiscalCode: cat.fiscalCode || '',
+    sdi: cat.sdi || '',
+    registeredOffice: cat.registeredOffice || '',
+    operationalOffice: cat.operationalOffice || '',
+    iban: cat.iban || '',
+    swift: cat.swift || '',
+    bankName: cat.bankName || '',
+    pdfHeaderColor: cat.pdfHeaderColor || '#1B3A5C',
+    pdfAccentColor: cat.pdfAccentColor || '#2E86AB',
+    pdfFooterText: cat.pdfFooterText || '',
+    pdfWatermark: cat.pdfWatermark || false,
+    pdfWatermarkText: cat.pdfWatermarkText || 'BOZZA',
+    quoteLegalNotes: cat.quoteLegalNotes || '',
+    quotePaymentTerms: cat.quotePaymentTerms || '',
+  });
+
+  const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const uploadLogo = async (file) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert('Il file non deve superare 2MB'); return; }
+    if (!['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'].includes(file.type)) {
+      alert('Formato non supportato. Usa PNG, JPG, SVG o WebP');
+      return;
+    }
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `logo.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('branding')
+        .upload(path, file, { upsert: true, cacheControl: '0' });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('branding').getPublicUrl(path);
+      const urlWithCacheBust = publicUrl + '?v=' + Date.now();
+      setLogo(urlWithCacheBust);
+    } catch (err) {
+      alert('Errore upload: ' + (err.message || err));
+    }
+    setUploading(false);
+  };
+
+  const removeLogo = async () => {
+    try {
+      const files = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.svg', 'logo.webp'];
+      await supabase.storage.from('branding').remove(files);
+      setLogo('');
+    } catch (err) {
+      console.error('[Branding] Remove logo error:', err);
+    }
+  };
+
+  const handleSave = () => {
+    onSave('branding', { ...form, logo });
+  };
+
+  const SectionTitle = ({ children }) => (
+    <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginTop: 20, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #e2e8f0' }}>{children}</div>
+  );
+
+  const Row = ({ children }) => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>{children}</div>
+  );
+
   return (
-    <Card title="Branding / Dati Azienda" desc="Logo, dati fiscali, template PDF">
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginBottom: 8 }}>Dati Azienda</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Ragione Sociale"><Input value={form.companyFullName} onChange={v => set('companyFullName', v)} /></Field>
-        <Field label="Tagline"><Input value={form.tagline} onChange={v => set('tagline', v)} /></Field>
-        <Field label="P.IVA"><Input value={form.vatNumber} onChange={v => set('vatNumber', v)} /></Field>
-        <Field label="Codice Fiscale"><Input value={form.fiscalCode} onChange={v => set('fiscalCode', v)} /></Field>
-        <Field label="Sede Legale"><Input value={form.registeredOffice} onChange={v => set('registeredOffice', v)} /></Field>
-        <Field label="Sede Operativa"><Input value={form.operationalOffice} onChange={v => set('operationalOffice', v)} /></Field>
-        <Field label="Telefono"><Input value={form.phone} onChange={v => set('phone', v)} /></Field>
-        <Field label="Email"><Input value={form.email} onChange={v => set('email', v)} /></Field>
-        <Field label="Website"><Input value={form.website} onChange={v => set('website', v)} /></Field>
-        <Field label="PEC"><Input value={form.pec} onChange={v => set('pec', v)} /></Field>
-        <Field label="Codice SDI"><Input value={form.sdi} onChange={v => set('sdi', v)} /></Field>
+    <Card title="Branding / Azienda" desc="Logo, dati aziendali e personalizzazione PDF">
+      <SectionTitle>Logo Aziendale</SectionTitle>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{
+          width: 120, height: 120, border: '2px dashed #e2e8f0', borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: '#f8fafc', overflow: 'hidden', flexShrink: 0,
+        }}>
+          {logo ? (
+            <img src={logo} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          ) : (
+            <span style={{ color: '#94a3b8', fontSize: 11, textAlign: 'center' }}>Nessun logo</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={{
+            display: 'inline-block', background: '#2E86AB', color: '#fff', padding: '6px 14px',
+            borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>
+            {uploading ? 'Caricamento...' : 'Carica Logo'}
+            <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              onChange={e => uploadLogo(e.target.files[0])} style={{ display: 'none' }} />
+          </label>
+          {logo && (
+            <button onClick={removeLogo} style={{
+              background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6,
+              padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#dc2626',
+            }}>Rimuovi Logo</button>
+          )}
+          <span style={{ fontSize: 10, color: '#94a3b8' }}>PNG, JPG, SVG o WebP. Max 2MB.</span>
+        </div>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginTop: 20, marginBottom: 8 }}>Dati Bancari</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Banca"><Input value={form.bankName} onChange={v => set('bankName', v)} /></Field>
-        <Field label="IBAN"><Input value={form.iban} onChange={v => set('iban', v)} /></Field>
-        <Field label="SWIFT/BIC"><Input value={form.swift} onChange={v => set('swift', v)} /></Field>
+
+      <SectionTitle>Dati Aziendali</SectionTitle>
+      <Row>
+        <Field label="Ragione Sociale"><Input value={form.companyFullName} onChange={v => updateField('companyFullName', v)} placeholder="Itinera Pro S.r.l." /></Field>
+        <Field label="Tagline"><Input value={form.tagline} onChange={v => updateField('tagline', v)} placeholder="Event Production & Design" /></Field>
+      </Row>
+      <Row>
+        <Field label="Sito Web"><Input value={form.website} onChange={v => updateField('website', v)} placeholder="www.itinerapro.com" /></Field>
+        <Field label="Email"><Input type="email" value={form.email} onChange={v => updateField('email', v)} placeholder="info@itinerapro.com" /></Field>
+      </Row>
+      <Row>
+        <Field label="Telefono"><Input value={form.phone} onChange={v => updateField('phone', v)} placeholder="+39 ..." /></Field>
+        <Field label="PEC"><Input value={form.pec} onChange={v => updateField('pec', v)} placeholder="itinera@pec.it" /></Field>
+      </Row>
+      <Row>
+        <Field label="P.IVA"><Input value={form.vatNumber} onChange={v => updateField('vatNumber', v)} placeholder="IT12345678901" /></Field>
+        <Field label="Codice Fiscale"><Input value={form.fiscalCode} onChange={v => updateField('fiscalCode', v)} /></Field>
+      </Row>
+      <Row>
+        <Field label="Codice SDI"><Input value={form.sdi} onChange={v => updateField('sdi', v)} placeholder="XXXXXXX" /></Field>
+        <div></div>
+      </Row>
+      <Row>
+        <Field label="Sede Legale"><Input value={form.registeredOffice} onChange={v => updateField('registeredOffice', v)} /></Field>
+        <Field label="Sede Operativa"><Input value={form.operationalOffice} onChange={v => updateField('operationalOffice', v)} /></Field>
+      </Row>
+
+      <SectionTitle>Coordinate Bancarie</SectionTitle>
+      <Row>
+        <Field label="IBAN"><Input value={form.iban} onChange={v => updateField('iban', v)} placeholder="IT..." /></Field>
+        <Field label="SWIFT/BIC"><Input value={form.swift} onChange={v => updateField('swift', v)} /></Field>
+      </Row>
+      <Row>
+        <Field label="Banca"><Input value={form.bankName} onChange={v => updateField('bankName', v)} /></Field>
+        <div></div>
+      </Row>
+
+      <SectionTitle>Personalizzazione PDF</SectionTitle>
+      <Row>
+        <Field label="Colore Header PDF">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="color" value={form.pdfHeaderColor} onChange={e => updateField('pdfHeaderColor', e.target.value)}
+              style={{ width: 36, height: 30, border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer' }} />
+            <Input value={form.pdfHeaderColor} onChange={v => updateField('pdfHeaderColor', v)} />
+          </div>
+        </Field>
+        <Field label="Colore Accento PDF">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="color" value={form.pdfAccentColor} onChange={e => updateField('pdfAccentColor', e.target.value)}
+              style={{ width: 36, height: 30, border: '1px solid #e2e8f0', borderRadius: 4, cursor: 'pointer' }} />
+            <Input value={form.pdfAccentColor} onChange={v => updateField('pdfAccentColor', v)} />
+          </div>
+        </Field>
+      </Row>
+      <Field label="Testo Footer PDF"><Input value={form.pdfFooterText} onChange={v => updateField('pdfFooterText', v)} /></Field>
+      <Row>
+        <Field label="Watermark">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+            <input type="checkbox" checked={form.pdfWatermark} onChange={e => updateField('pdfWatermark', e.target.checked)} />
+            Mostra watermark sulle bozze
+          </label>
+        </Field>
+        <Field label="Testo Watermark"><Input value={form.pdfWatermarkText} onChange={v => updateField('pdfWatermarkText', v)} placeholder="BOZZA" /></Field>
+      </Row>
+
+      <SectionTitle>Testi Preventivo</SectionTitle>
+      <Field label="Note Legali Preventivo">
+        <textarea value={form.quoteLegalNotes} onChange={e => updateField('quoteLegalNotes', e.target.value)}
+          rows={3} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+      </Field>
+      <Field label="Condizioni di Pagamento">
+        <textarea value={form.quotePaymentTerms} onChange={e => updateField('quotePaymentTerms', e.target.value)}
+          rows={2} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+      </Field>
+
+      <div style={{ marginTop: 20 }}>
+        <Btn onClick={handleSave} color="#16a34a">Salva Branding</Btn>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginTop: 20, marginBottom: 8 }}>Template PDF</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="Colore Header PDF"><ColorInput value={form.pdfHeaderColor} onChange={v => set('pdfHeaderColor', v)} /></Field>
-        <Field label="Colore Accento PDF"><ColorInput value={form.pdfAccentColor} onChange={v => set('pdfAccentColor', v)} /></Field>
-      </div>
-      <Field label="Footer PDF"><Input value={form.pdfFooterText} onChange={v => set('pdfFooterText', v)} /></Field>
-      <Toggle value={form.pdfWatermark} onChange={v => set('pdfWatermark', v)} label="Watermark su bozze" />
-      {form.pdfWatermark && <Field label="Testo Watermark"><Input value={form.pdfWatermarkText} onChange={v => set('pdfWatermarkText', v)} /></Field>}
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1B3A5C', marginTop: 20, marginBottom: 8 }}>Preventivi</div>
-      <Field label="Note Legali"><textarea value={form.quoteLegalNotes || ''} onChange={e => set('quoteLegalNotes', e.target.value)} rows={3} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} /></Field>
-      <Field label="Condizioni Pagamento"><textarea value={form.quotePaymentTerms || ''} onChange={e => set('quotePaymentTerms', e.target.value)} rows={2} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} /></Field>
-      <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}><Btn onClick={() => onSave('branding', form)}>Salva Branding</Btn><SaveIndicator saving={saving} /></div>
     </Card>
   );
 }
+
 
 function UnitsSection({ data, onSave, saving }) {
   const [form, setForm] = useState(data || {});
@@ -932,7 +1082,7 @@ export default function SettingsPage({ onBack }) {
       case 'calculations': return <CalculationsSection data={config.calculations} onSave={handleSave} saving={saving} />;
       case 'alerts': return <AlertsSection data={config.alerts} onSave={handleSave} saving={saving} />;
       case 'tax': return <TaxSection data={config.tax} onSave={handleSave} saving={saving} />;
-      case 'branding': return <BrandingSection data={config.branding} onSave={handleSave} saving={saving} />;
+      case 'branding': return <BrandingSection config={config} onSave={handleSave} />;
       case 'units': return <UnitsSection data={config.units} onSave={handleSave} saving={saving} />;
       case 'users': return <UsersSection />;
       case 'audit': return <AuditLogSection />;
